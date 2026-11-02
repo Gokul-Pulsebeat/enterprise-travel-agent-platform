@@ -1,4 +1,4 @@
-# Flight Agent MCP Learning Lab
+# Tour Agent (Flight + Hotel booking) MCP Learning Lab
 
 This is a deliberately small project for learning the moving parts around:
 
