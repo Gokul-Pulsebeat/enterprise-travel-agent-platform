@@ -109,13 +109,14 @@ pytest
 
 _The test suite generates a `report.html` file showing unit logic validation and full end-to-end `stdio` protocol integration checks._
 
-## 🗺️ Upcoming Sub-Projects (Epics)
+## 🗺️ Platform Roadmap (Epics)
 
-We are actively progressing through the following Epics to productionize the platform:
+We are incrementally productionizing the platform through the following phases:
 
-- **SP01:** CI/CD Pipelines, Dockerization & Serverless Terraform IaC _(Up Next)_
-- **SP02:** Productionizing Flight & Hotel Core Microservices (Async Postgres, Row-Level Locking, Background Email Workers)
-- **SP03:** Stateless Streamable HTTP MCP Layer, Auth & Security Guardrails
-- **SP04:** LangGraph Multi-Agent Architecture & HITL Workflows
-- **SP05:** Native Policy RAG MCP Server & FinOps Sandbox MCP Server
-- **SP06:** Dynamic Model Router, Egress Validation, Observability & Evals
+- [x] **SP00:** Repo Standardization, Naming Symmetry & MCP 2.x Baseline
+- [ ] **SP01:** CI/CD Pipelines, Dockerization & Serverless Terraform IaC _(Active)_
+- [ ] **SP02:** Productionizing Flight & Hotel Core Microservices (Async Postgres, Row-Level Locking, Background Email Workers)
+- [ ] **SP03:** Stateless Streamable HTTP MCP Layer, Auth & Security Guardrails
+- [ ] **SP04:** LangGraph Multi-Agent Architecture & HITL Workflows
+- [ ] **SP05:** Native Policy RAG MCP Server & FinOps Sandbox MCP Server
+- [ ] **SP06:** Dynamic Model Router, Egress Validation, Observability & Evals
