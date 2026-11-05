@@ -17,8 +17,8 @@ from mcp.server.mcpserver import MCPServer
 # Read the hotel API base URL from the environment, defaulting to the local hotel API server.
 HOTEL_API_BASE_URL = os.getenv("HOTEL_API_BASE_URL", "http://127.0.0.1:8001")
 
-# Create an MCP server named `hotel-search-mcp`.
-mcp = MCPServer("hotel-search-mcp")
+# Create an MCP server named `hotel-mcp-server`.
+mcp = MCPServer("hotel-mcp-server")
 
 
 # Register the following Python function as an MCP tool.
