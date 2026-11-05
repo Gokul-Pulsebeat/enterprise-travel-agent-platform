@@ -10,15 +10,15 @@ import requests
 # Import specific request exceptions so local-server failures can show friendly messages.
 from requests import ConnectionError as RequestsConnectionError
 
-# Import FastMCP, a small helper that makes defining MCP tools simple.
-from mcp.server.fastmcp import FastMCP
+# Import MCPServer (the MCP 2.x successor to FastMCP), a small helper that makes defining MCP tools simple.
+from mcp.server.mcpserver import MCPServer
 
 
 # Read the hotel API base URL from the environment, defaulting to the local hotel API server.
 HOTEL_API_BASE_URL = os.getenv("HOTEL_API_BASE_URL", "http://127.0.0.1:8001")
 
-# Create an MCP server named `hotel-search-mcp`.
-mcp = FastMCP("hotel-search-mcp")
+# Create an MCP server named `hotel-mcp-server`.
+mcp = MCPServer("hotel-mcp-server")
 
 
 # Register the following Python function as an MCP tool.

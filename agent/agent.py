@@ -67,7 +67,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Configure all MCP servers that the agent can start and use.
 MCP_SERVER_PATHS = {
-    "flight": PROJECT_ROOT / "mcp_server" / "server.py",
+    "flight": PROJECT_ROOT / "flight_mcp_server" / "server.py",
     "hotel": PROJECT_ROOT / "hotel_mcp_server" / "server.py",
 }
 
@@ -333,7 +333,7 @@ def server_tool_to_dict(server_name: str, tool) -> dict:
         "server_name": server_name,
         "name": tool.name,
         "description": tool.description,
-        "input_schema": tool.inputSchema,
+        "input_schema": tool.input_schema,
     }
 
 
@@ -411,9 +411,14 @@ def extract_text_content(tool_result) -> str:
         if hasattr(item, "text"):
             # Add the text to the list.
             parts.append(item.text)
+            
+    # FIX: MCP v2 formats list items as multiple pretty-printed TextContent blocks.
+    # Reconstruct a valid JSON array if multiple JSON objects are returned.
+    if len(parts) > 1 and all(p.strip().startswith("{") and p.strip().endswith("}") for p in parts):
+        return "[" + ",\n".join(parts) + "]"
+        
     # Return all text chunks as one string.
     return "\n".join(parts)
-
 
 # Define a helper that parses MCP text into JSON data.
 def parse_tool_json(raw_text: str):
