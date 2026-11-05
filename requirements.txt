@@ -1,5 +1,5 @@
 fastapi==0.115.6
 uvicorn==0.34.0
 requests==2.32.3
-mcp==1.2.0
+mcp==2.3.0
 openai==2.9.0

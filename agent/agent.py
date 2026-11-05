@@ -67,7 +67,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Configure all MCP servers that the agent can start and use.
 MCP_SERVER_PATHS = {
-    "flight": PROJECT_ROOT / "mcp_server" / "server.py",
+    "flight": PROJECT_ROOT / "flight_mcp_server" / "server.py",
     "hotel": PROJECT_ROOT / "hotel_mcp_server" / "server.py",
 }
 
@@ -333,7 +333,7 @@ def server_tool_to_dict(server_name: str, tool) -> dict:
         "server_name": server_name,
         "name": tool.name,
         "description": tool.description,
-        "input_schema": tool.inputSchema,
+        "input_schema": tool.input_schema,
     }
 
 

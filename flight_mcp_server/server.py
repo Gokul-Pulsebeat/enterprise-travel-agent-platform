@@ -10,15 +10,15 @@ import requests
 # Import specific request exceptions so local-server failures can show friendly messages.
 from requests import ConnectionError as RequestsConnectionError
 
-# Import FastMCP, a small helper that makes defining MCP tools simple.
-from mcp.server.fastmcp import FastMCP
+# Import MCPServer (the MCP 2.x successor to FastMCP), a small helper that makes defining MCP tools simple.
+from mcp.server.mcpserver import MCPServer
 
 
 # Read the flight API base URL from the environment, defaulting to the local API server.
 FLIGHT_API_BASE_URL = os.getenv("FLIGHT_API_BASE_URL", "http://127.0.0.1:8000")
 
 # Create an MCP server named `flight-search-mcp`.
-mcp = FastMCP("flight-search-mcp")
+mcp = MCPServer("flight-search-mcp")
 
 
 # Register the following Python function as an MCP tool.

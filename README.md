@@ -17,7 +17,7 @@ User prompt
       - contains simple "agent" logic
       - contains the MCP client
       - connects to multiple MCP servers over stdio
-  -> mcp_server/server.py
+  -> flight_mcp_server/server.py
       - exposes tools like search_flights and get_flight
       - calls the flight API over HTTP
   -> flight_api/app.py
@@ -55,11 +55,11 @@ In this project, `agent/agent.py` contains both the simple agent logic and the M
 ## Project Folders
 
 ```text
-flight_api/         Normal web service with public flight search APIs
-mcp_server/         MCP server that wraps the flight API as tools
-hotel_api/          Normal web service with public hotel search APIs
-hotel_mcp_server/   MCP server that wraps the hotel API as tools
-agent/              Simple prompt-driven agent and MCP client
+flight_api/          Normal web service with public flight search APIs
+flight_mcp_server/   MCP server that wraps the flight API as tools
+hotel_api/           Normal web service with public hotel search APIs
+hotel_mcp_server/    MCP server that wraps the hotel API as tools
+agent/               Simple prompt-driven agent and MCP client
 ```
 
 ## Install
