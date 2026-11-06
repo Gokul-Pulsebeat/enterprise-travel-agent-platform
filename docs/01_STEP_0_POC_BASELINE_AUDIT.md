@@ -23,7 +23,7 @@ User prompt
 
 The PoC deliberately favored simplicity: every moving part runs on one developer machine, state lives in two local SQLite files, and every guardrail was left out so the orchestration mechanics were easy to read.
 
-> **Naming note.** At the time of the `v0.1.0-poc` tag the flight MCP server lived in `mcp_server/` and the hotel server in `hotel_mcp_server/`. SP00 (see [`TASK-0.1`](subprojects/sp00_repo_standardization/TASK-0.1_naming_and_mcp2_migration.md)) renames the former to `flight_mcp_server/` so both domains are symmetric. This audit describes behavior, which is unaffected by that rename.
+> **Naming note.** At the time of the `v0.1.0-poc` tag the flight MCP server lived in `mcp_server/` and the hotel server in `hotel_mcp_server/`. SP00 (see [`TASK-0.1`](subprojects/sp00_repo_standardization/TASK-0.1_naming_tests_and_dependency_locking.md)) renames the former to `flight_mcp_server/` so both domains are symmetric. This audit describes behavior, which is unaffected by that rename.
 
 ---
 

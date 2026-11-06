@@ -63,8 +63,8 @@ uvicorn hotel_api.app:app --reload --port 8001
 _(Optional) Test the REST endpoints directly:_
 
 ```bash
-curl "[http://127.0.0.1:8000/flights?origin=BLR&destination=DEL](http://127.0.0.1:8000/flights?origin=BLR&destination=DEL)"
-curl "[http://127.0.0.1:8001/hotels?city=Delhi](http://127.0.0.1:8001/hotels?city=Delhi)"
+curl "http://127.0.0.1:8000/flights?origin=BLR&destination=DEL"
+curl "(http://127.0.0.1:8001/hotels?city=Delhi"
 ```
 
 ### 2. Run the Multi-Server Agent

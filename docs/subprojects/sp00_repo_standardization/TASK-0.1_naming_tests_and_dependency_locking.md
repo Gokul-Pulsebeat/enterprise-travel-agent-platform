@@ -89,7 +89,6 @@ git grep --untracked -n "mcp.server.fastmcp" -- "*.py"                  # expect
 git grep --untracked -nE "(^|[^_a-z])mcp_server" -- "*.py" README.md     # expect: no output
 
 # 3. Dependencies (AC5)
-# 3. Dependencies (AC5)
 Select-String -Path requirements.in -Pattern "mcp>=2.0.0|pytest>=8.0.0|httpx>=0.27.0"
 
 # 4. Full test suite (AC6, AC10)
