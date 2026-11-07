@@ -1,0 +1,25 @@
+# Keep the build context small and keep secrets/state out of images.
+
+# Environment, VCS and caches
+.venv/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Test output and documentation (not needed at runtime)
+report.html
+docs/
+
+# Local databases: containers create and seed their own SQLite files
+*.db
+
+# Secrets and local config
+.env
+
+# Not needed inside runtime images
+tests/
+.github/
+work/
+outputs/

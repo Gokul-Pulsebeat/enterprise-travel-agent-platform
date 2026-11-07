@@ -71,6 +71,12 @@ MCP_SERVER_PATHS = {
     "hotel": PROJECT_ROOT / "hotel_mcp_server" / "server.py",
 }
 
+# Environment variables forwarded to the MCP server subprocesses.
+# `stdio_client` only inherits a small safe allowlist (PATH, HOME, ...), so anything else the
+# servers need, such as the REST API URLs, must be passed explicitly. Without this, setting
+# FLIGHT_API_BASE_URL/HOTEL_API_BASE_URL on the agent (for example in Docker) would have no effect.
+MCP_FORWARDED_ENV_VARS = ("FLIGHT_API_BASE_URL", "HOTEL_API_BASE_URL")
+
 # Read which LLM provider to use; `ollama` is the free local default.
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
 
@@ -411,14 +417,15 @@ def extract_text_content(tool_result) -> str:
         if hasattr(item, "text"):
             # Add the text to the list.
             parts.append(item.text)
-            
+
     # FIX: MCP v2 formats list items as multiple pretty-printed TextContent blocks.
     # Reconstruct a valid JSON array if multiple JSON objects are returned.
     if len(parts) > 1 and all(p.strip().startswith("{") and p.strip().endswith("}") for p in parts):
         return "[" + ",\n".join(parts) + "]"
-        
+
     # Return all text chunks as one string.
     return "\n".join(parts)
+
 
 # Define a helper that parses MCP text into JSON data.
 def parse_tool_json(raw_text: str):
@@ -522,6 +529,12 @@ def format_hotels(raw_text: str) -> str:
     return "\n".join(lines)
 
 
+# Define a helper that collects the environment variables the MCP server subprocesses need.
+def build_mcp_server_env() -> dict[str, str]:
+    # Forward only the configured variables that are actually set in this process.
+    return {name: os.environ[name] for name in MCP_FORWARDED_ENV_VARS if name in os.environ}
+
+
 # Define a helper that connects to every configured MCP server.
 async def connect_mcp_servers(stack: AsyncExitStack) -> dict[str, ClientSession]:
     # Store sessions by server name.
@@ -529,7 +542,7 @@ async def connect_mcp_servers(stack: AsyncExitStack) -> dict[str, ClientSession]
     # Loop through configured MCP servers.
     for server_name, server_path in MCP_SERVER_PATHS.items():
         # Describe how to launch this MCP server.
-        params = StdioServerParameters(command=sys.executable, args=[str(server_path)])
+        params = StdioServerParameters(command=sys.executable, args=[str(server_path)], env=build_mcp_server_env())
         # Open stdio streams for this server.
         read_stream, write_stream = await stack.enter_async_context(stdio_client(params))
         # Create an MCP client session.

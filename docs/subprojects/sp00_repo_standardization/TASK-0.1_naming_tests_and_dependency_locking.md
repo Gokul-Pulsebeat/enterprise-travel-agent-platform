@@ -78,7 +78,7 @@ Run from the repository root with the virtual environment active (PowerShell sho
 # 0. Install dependencies using the strict lockfile
 pip install pip-tools
 pip-sync requirements.txt
-# (To verify compilation logic: pip-compile requirements.in)
+# (To re-lock after editing requirements.in, use scripts/compile-requirements.ps1 or .sh; see SP01 TASK-1.1. Avoid running pip-compile directly on Windows.)
 
 # 1. Layout (AC1): old folder gone, new folder present
 Test-Path mcp_server                 # expect: False

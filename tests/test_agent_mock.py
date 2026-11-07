@@ -3,6 +3,7 @@
 import json
 
 from agent.agent import (
+    build_mcp_server_env,
     extract_airport_codes,
     extract_date,
     infer_route,
@@ -116,3 +117,21 @@ def test_resolve_arguments_replaces_first_flight_date_placeholder():
         completed,
     )
     assert resolved == {"city": "Delhi", "check_in_date": "2026-06-10"}
+
+
+# ---------------------------------------------------------------------------
+# build_mcp_server_env
+# ---------------------------------------------------------------------------
+def test_build_mcp_server_env_forwards_api_base_urls(monkeypatch):
+    monkeypatch.setenv("FLIGHT_API_BASE_URL", "http://flight_api:8000")
+    monkeypatch.setenv("HOTEL_API_BASE_URL", "http://hotel_api:8001")
+    assert build_mcp_server_env() == {
+        "FLIGHT_API_BASE_URL": "http://flight_api:8000",
+        "HOTEL_API_BASE_URL": "http://hotel_api:8001",
+    }
+
+
+def test_build_mcp_server_env_omits_unset_variables(monkeypatch):
+    monkeypatch.delenv("FLIGHT_API_BASE_URL", raising=False)
+    monkeypatch.delenv("HOTEL_API_BASE_URL", raising=False)
+    assert build_mcp_server_env() == {}
