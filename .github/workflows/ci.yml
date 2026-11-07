@@ -101,3 +101,29 @@ jobs:
             flight_api.log
             hotel_api.log
           if-no-files-found: warn
+
+  terraform-check:
+    name: Terraform fmt & validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      # Fails if any .tf file is not canonically formatted. Fix: terraform fmt -recursive (in infra/terraform).
+      - name: terraform fmt -check
+        run: terraform -chdir=infra/terraform fmt -check -recursive -diff
+
+      # No backend and no credentials are needed to validate the configuration.
+      - name: terraform init (no backend)
+        run: terraform -chdir=infra/terraform init -backend=false -input=false
+
+      - name: terraform validate
+        run: terraform -chdir=infra/terraform validate

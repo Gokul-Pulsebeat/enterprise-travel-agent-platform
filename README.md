@@ -26,7 +26,8 @@ agent/               Agent orchestrator and dynamic MCP client
 tests/               Baseline pytest suite (Unit & Integration)
 scripts/             Helper scripts (containerized lockfile compilation)
 docs/                Enterprise PRDs, Architecture docs, and task tracking
-.github/             CI workflow (GitHub Actions) and pull request template
+.github/             CI and CD workflows (GitHub Actions) and pull request template
+infra/terraform/     Terraform for GCP Cloud Run, Artifact Registry, Secret Manager, WIF, Neon & Upstash
 docker-compose.yml   Local parity stack (Postgres, Redis, both APIs, agent smoke test)
 .env.example         Documented environment variables
 ```
@@ -84,6 +85,40 @@ docker compose down -v
 ```
 
 _Compose reads a `.env` file automatically (copy `.env.example` to `.env` to change the Postgres defaults). The Python code does **not** load `.env`; when running locally, set variables such as `LLM_PROVIDER` in your shell as shown below._
+
+## ☁️ Cloud Deployment (Terraform & CD)
+
+The two REST APIs deploy to **GCP Cloud Run**. Infrastructure is defined in `infra/terraform/` and applied manually; every merge to `productionize` then ships new images automatically through `.github/workflows/cd.yml`.
+
+```text
+merge to productionize
+  -> GitHub Actions authenticates to GCP via Workload Identity Federation (no JSON keys)
+  -> build + push flight-api / hotel-api images to Artifact Registry, tagged with the commit SHA
+  -> deploy to Cloud Run
+  -> poll /health on both services (post-deploy gate)
+  -> on failure: roll BOTH services back to the previous revisions automatically
+```
+
+**What Terraform provisions:** Artifact Registry, two Cloud Run services (scale-to-zero, capped at 2 instances), Secret Manager secrets, least-privilege service accounts, Workload Identity Federation limited to this repository's `productionize` branch, a Neon Postgres project and an Upstash Redis database (free tiers). Their connection strings are injected into the services as `DATABASE_URL` / `REDIS_URL` through Secret Manager; the applications do not use them until SP02+.
+
+**One-time setup** (you need a GCP project with billing enabled, plus Neon and Upstash accounts; see [TASK-1.4](docs/subprojects/sp01_cicd_and_serverless_infra/TASK-1.4_terraform_iac.md) for details):
+
+```powershell
+gcloud auth application-default login
+Copy-Item infra/terraform/terraform.tfvars.example infra/terraform/terraform.tfvars   # set project_id and github_repository
+$env:TF_VAR_neon_api_key    = "<neon-api-key>"        # credentials stay in the environment, never in a file
+$env:TF_VAR_upstash_email   = "<upstash-email>"
+$env:TF_VAR_upstash_api_key = "<upstash-api-key>"
+
+terraform -chdir=infra/terraform init
+terraform -chdir=infra/terraform plan -out tfplan      # review before applying
+terraform -chdir=infra/terraform apply tfplan
+terraform -chdir=infra/terraform output github_actions_variables   # add these as GitHub repository variables
+```
+
+After the variables are set, the next push to `productionize` (or **Actions → CD → Run workflow**) performs the first deploy. The **Run workflow** form has a `rollback_drill` option that forces the health gate to fail so you can watch the automatic rollback work safely. Details and verification steps: [TASK-1.5](docs/subprojects/sp01_cicd_and_serverless_infra/TASK-1.5_cd_pipeline.md).
+
+_Terraform state contains secrets: never commit it (it is gitignored) and prefer the remote GCS backend described in `infra/terraform/backend.tf.example` for anything shared. Commit `.terraform.lock.hcl`, generated for all platforms with `terraform providers lock`._
 
 ## 🚀 Run the Base Architecture
 
@@ -159,14 +194,20 @@ pytest -m "not integration"
 
 _The test suite generates a `report.html` file showing unit logic validation and full end-to-end `stdio` protocol integration checks._
 
-Every pull request into `productionize` or `main` runs this same lint and test sequence in GitHub Actions (`.github/workflows/ci.yml`).
+Every pull request into `productionize` or `main` runs this same lint and test sequence in GitHub Actions (`.github/workflows/ci.yml`), plus a `Terraform fmt & validate` job. To run the Terraform checks locally:
+
+```powershell
+terraform -chdir=infra/terraform fmt -check -recursive
+terraform -chdir=infra/terraform init -backend=false
+terraform -chdir=infra/terraform validate
+```
 
 ## 🗺️ Platform Roadmap (Epics)
 
 We are incrementally productionizing the platform through the following phases:
 
 - [x] **SP00:** Repo Standardization, Naming Symmetry & MCP 2.x Baseline
-- [ ] **SP01:** CI/CD Pipelines, Dockerization & Serverless Terraform IaC _(Active — PR 1: CI, Docker & Compose; PR 2: Terraform & CD)_
+- [ ] **SP01:** CI/CD Pipelines, Dockerization & Serverless Terraform IaC _(Active — PR 1 (CI, Docker & Compose) merged; PR 2: Terraform & CD)_
 - [ ] **SP02:** Productionizing Flight & Hotel Core Microservices (Async Postgres, Row-Level Locking, Background Email Workers)
 - [ ] **SP03:** Stateless Streamable HTTP MCP Layer, Auth & Security Guardrails
 - [ ] **SP04:** LangGraph Multi-Agent Architecture & HITL Workflows
