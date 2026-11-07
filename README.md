@@ -43,10 +43,13 @@ python -m venv .venv
 .venv\Scripts\activate      # Windows (PowerShell)
 # source .venv/bin/activate # macOS/Linux
 
-# 2. Install dependencies via pip-tools lockfile
+# 2. Install dependencies from the lockfile
 pip install pip-tools
-pip-sync requirements.txt
+.\scripts\sync-dev.ps1          # Windows (PowerShell)
+# pip-sync requirements.txt     # macOS / Linux
 ```
+
+**Why a separate step on Windows?** `requirements.txt` is compiled in a Linux container so it matches CI and the Docker images, which means it omits Windows-only packages (notably `pywin32`, which the MCP SDK needs on Windows). `scripts/sync-dev.ps1` runs `pip-sync requirements.txt requirements-windows.txt`, adding them back. Do not run `pip-sync requirements.txt` on its own on Windows: it uninstalls them.
 
 ### Changing dependencies
 

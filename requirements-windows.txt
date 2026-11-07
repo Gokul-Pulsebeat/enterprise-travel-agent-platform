@@ -1,0 +1,14 @@
+# Windows-only packages for LOCAL development.
+#
+# requirements.txt is compiled inside a Linux container so it matches CI and the Docker images. That means
+# pip-compile leaves out dependencies that only apply on Windows. On Windows, install this file ALONGSIDE the
+# lockfile (scripts/sync-dev.ps1 does both). CI and the Dockerfiles never read this file.
+#
+# Maintained by hand. If a Windows-only ImportError appears after a dependency upgrade, add the package here.
+
+# Required by the MCP SDK on Windows (mcp declares: pywin32>=311; sys_platform == 'win32').
+# 311 is the minimum mcp 2.3.0 accepts; raise it if mcp's requirement changes.
+pywin32==311 ; sys_platform == "win32"
+
+# Windows-only dependency of pytest and click (terminal colors).
+colorama==0.4.6 ; sys_platform == "win32"

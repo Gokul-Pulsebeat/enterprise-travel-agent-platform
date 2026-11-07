@@ -31,13 +31,14 @@ Make quality gates automatic. Every pull request and every push to `productioniz
 
 - `scripts/compile-requirements.ps1` and `scripts/compile-requirements.sh`: run `pip-compile` inside a `python:3.11-slim` container (requires Docker) so `requirements.txt` is always compiled for Linux, matching CI and the Docker images.
 - **Verify lockfile parity** step in `ci.yml`: recompiles on Linux and fails the build if the committed `requirements.txt` differs.
+- `requirements-windows.txt` and `scripts/sync-dev.ps1`: local-only supplement for Windows-only packages (`pywin32`, `colorama`) that the Linux-compiled lockfile omits. CI and the Dockerfiles never read it.
 
 ### Out of scope
 
 - Building Docker images in CI (images are introduced in TASK-1.2; a CI image-build check is a candidate follow-up).
 - Deployment (TASK-1.5).
 - Multi-version Python matrix, coverage thresholds, and security scanning.
-- Enabling branch protection ("require the `Lint & Test` check") — this is a GitHub repository setting, not code. See acceptance criterion AC12.
+- Enabling branch protection ("require the `Lint & Test` check") — this is a GitHub repository setting, not code. See acceptance criterion AC13.
 
 ## 3. Architectural Notes
 
@@ -48,6 +49,8 @@ Make quality gates automatic. Every pull request and every push to `productioniz
 **Why `target-version` is set.** `agent/agent.py` uses `BaseExceptionGroup`, a Python 3.11 builtin. Without a declared target, ruff assumes an older Python and reports it as an undefined name (F821). The rule set is the ruff default, stated explicitly so it does not change silently across ruff releases.
 
 **Lockfile parity.** `pip-compile` resolves for the host platform, so compiling on Windows can yield a different lockfile than Linux (for example Windows-only packages such as `colorama`), even though CI and the images run Linux. Two layers prevent that. First, `scripts/compile-requirements.*` run `pip-compile` in a `python:3.11-slim` container (the same base as the images). Second, the **Verify lockfile parity** CI step catches mistakes: it copies the committed `requirements.txt` to `requirements.check.txt` so `pip-compile` keeps the pinned versions, recompiles on Linux, and diffs the two with comment lines removed. The seed copy matters: without it, `pip-compile` would resolve to the newest releases and the check would fail whenever any upstream package published a new version. Comments are ignored because the generated header records the output filename. The step runs before `pip-sync` so a bad lockfile fails fast with a clear message.
+
+**Windows-only dependencies.** The Linux-compiled lockfile is correct for CI and Docker but omits packages that only apply on Windows, because `pip-compile` drops transitive requirements whose environment markers do not match the host. `mcp` 2.3.0 declares `pywin32>=311; sys_platform == 'win32'`, so a Windows venv synced from the lockfile alone fails with a missing `pywin32` module, and `pip-sync` actively uninstalls it. `requirements-windows.txt` holds hand-maintained, marker-guarded pins for these packages, and `scripts/sync-dev.ps1` runs `pip-sync requirements.txt requirements-windows.txt` so they are installed together. Adding `pywin32` to `requirements.in` is not an option: without a marker, Linux CI and the images would try to install a package with no Linux wheels; with a marker, `pip-compile` on Linux drops it. If a future dependency adds another Windows-only package, it surfaces locally as an `ImportError` and is fixed by adding one line to the supplement.
 
 **Why real API processes in CI.** The MCP servers call the REST APIs over HTTP, and FastAPI's `TestClient` cannot serve real network requests. CI therefore starts `flight_api` (8000) and `hotel_api` (8001) with `uvicorn` in the background and polls `/health` until each returns HTTP 200 (up to 30 s) before running `pytest`. The e2e test fixture checks `/health` first and **reuses** already-running APIs rather than starting duplicates, so CI-started and locally started APIs both work. On timeout the step prints both API logs and fails.
 
@@ -70,7 +73,8 @@ Make quality gates automatic. Every pull request and every push to `productioniz
 | AC9  | `.gitignore` excludes `.ruff_cache/` and `.env`.                                                                                                |
 | AC10 | `scripts/compile-requirements.ps1` and `.sh` exist and regenerate `requirements.txt` inside a `python:3.11-slim` container.                    |
 | AC11 | CI runs a **Verify lockfile parity** step before `pip-sync` that fails when `requirements.txt` differs from a Linux recompile of `requirements.in`. |
-| AC12 | *(Manual)* Branch protection on `productionize` and `main` requires the `Lint & Test` status check before merging.                              |
+| AC12 | `requirements-windows.txt` and `scripts/sync-dev.ps1` exist; on Windows, `scripts/sync-dev.ps1` installs the lockfile plus the Windows-only packages and `pytest` passes locally. CI does not use either file. |
+| AC13 | *(Manual)* Branch protection on `productionize` and `main` requires the `Lint & Test` status check before merging.                              |
 
 ## 5. Verification Commands
 
@@ -80,7 +84,8 @@ Run from the repository root with the virtual environment active (PowerShell).
 # 0. Re-lock inside a Linux container so ruff is included (AC4, AC10; requires Docker Desktop), then sync the environment
 pip install pip-tools
 .\scripts\compile-requirements.ps1
-pip-sync requirements.txt
+.\scripts\sync-dev.ps1                                         # Windows: lockfile + requirements-windows.txt (AC12)
+python -c "import win32api; print('pywin32 OK')"              # expect: pywin32 OK
 Select-String -Path requirements.txt -Pattern "^ruff=="          # expect: a pinned ruff version
 
 # 1. Lint (AC5)
@@ -112,7 +117,7 @@ git push -u origin feat/sp01-cicd-and-docker
 
 ## 6. Rollout & Rollback
 
-- **Rollout:** merge PR 1 into `productionize`. Then enable the required status check (AC12).
+- **Rollout:** merge PR 1 into `productionize`. Then enable the required status check (AC13).
 - **Rollback:** delete or revert `.github/workflows/ci.yml`. No runtime code depends on CI.
 
 ## 7. Risks
@@ -120,6 +125,7 @@ git push -u origin feat/sp01-cicd-and-docker
 | Risk                                                                                                                         | Mitigation                                                                                                                       |
 | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `requirements.txt` compiled on Windows may contain platform-specific pins that behave differently under `pip-sync` on Linux  | Re-lock only with `scripts/compile-requirements.ps1` / `.sh` (Linux container); the **Verify lockfile parity** CI step fails fast if a host-compiled lockfile is pushed                                                  |
+| New Windows-only transitive dependency appears (`ImportError` on Windows only) | Add it to `requirements-windows.txt`; CI and Docker are unaffected |
 | Fixed ports 8000/8001 could clash on a shared runner                                                                         | GitHub-hosted runners are single-job VMs; the health wait fails loudly with logs if a port is unavailable                        |
 | Background processes started in one step must survive into later steps                                                       | `nohup` is used and the health-wait step verifies both APIs before tests run                                                     |
 | Open-ended `>=` ranges in `requirements.in` can pull new versions on recompile                                               | Versions only change when someone runs `pip-compile`; CI always installs the committed lockfile                                  |
