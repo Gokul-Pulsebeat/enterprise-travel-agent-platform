@@ -1,295 +1,174 @@
-# Flight Agent MCP Learning Lab
+# Enterprise Corporate Travel, Expense & Policy Compliance Platform
 
-This is a deliberately small project for learning the moving parts around:
+A production-grade, multi-agent enterprise platform demonstrating advanced orchestration using the **Model Context Protocol (MCP 2.x)**, LangGraph, and Serverless infrastructure.
 
-- a normal business web service
-- an MCP server that exposes that service as tools
-- an AI agent that receives user prompts and calls those MCP tools
-- the MCP client, which lives inside the agent
+Unlike standard tutorials, this repository is architected for real-world corporate scale. It transitions from a basic local proof-of-concept into a fully persistent, concurrent, and secure multi-domain system.
 
-The business logic is intentionally tiny. The goal is to understand the architecture, not to build a real travel system.
+## 📖 Architecture & Roadmap
 
-## Architecture
+We utilize a **4-Server Multi-Domain MCP Tool Layer** to cleanly decouple domain logic from the AI orchestrator, preventing context bloat and ensuring strict security boundaries:
 
-```text
-User prompt
-  -> agent/agent.py
-      - contains simple "agent" logic
-      - contains the MCP client
-      - connects to multiple MCP servers over stdio
-  -> flight_mcp_server/server.py
-      - exposes tools like search_flights and get_flight
-      - calls the flight API over HTTP
-  -> flight_api/app.py
-      - normal REST API
-      - reads mock flights from SQLite
-  -> flight_api/flights.db
-  -> hotel_mcp_server/server.py
-      - exposes tools like search_hotels and get_hotel
-      - calls the hotel API over HTTP
-  -> hotel_api/app.py
-      - normal REST API
-      - reads mock hotels from SQLite
-  -> hotel_api/hotels.db
-```
+1. **Flight MCP** (Transactional API / Neon Postgres)
+2. **Hotel MCP** (Transactional API / Neon Postgres)
+3. **Policy MCP** (Native MCP / pgvector Hybrid RAG)
+4. **FinOps MCP** (Native MCP / Python Execution Sandbox)
 
-## Where The MCP Client Fits
+**👉 [Read the Master PRD & Engineering Roadmap](docs/00_MASTER_PRD.md) for the full target architecture and sub-project breakdown.**
 
-The MCP client is not a separate business service in this simple version.
-
-It is the part of the agent that knows how to:
-
-1. start or connect to MCP servers
-2. ask each MCP server which tools exist
-3. combine those tools into one catalog
-4. call the selected server/tool with arguments
-4. return the tool result back to the agent logic
-
-So the agent has two responsibilities:
-
-- decide what to do based on the user's prompt
-- use the MCP client to call tools when it needs outside information
-
-In this project, `agent/agent.py` contains both the simple agent logic and the MCP client code.
-
-## Project Folders
+## 📂 Project Folders (Current Phase: SP01)
 
 ```text
-flight_api/          Normal web service with public flight search APIs
-flight_mcp_server/   MCP server that wraps the flight API as tools
-hotel_api/           Normal web service with public hotel search APIs
-hotel_mcp_server/    MCP server that wraps the hotel API as tools
-agent/               Simple prompt-driven agent and MCP client
+flight_api/          FastAPI REST service (Flight state & business logic)
+flight_mcp_server/   MCP v2 server exposing flight logic as agent tools
+hotel_api/           FastAPI REST service (Hotel state & business logic)
+hotel_mcp_server/    MCP v2 server exposing hotel logic as agent tools
+agent/               Agent orchestrator and dynamic MCP client
+tests/               Baseline pytest suite (Unit & Integration)
+scripts/             Helper scripts (containerized lockfile compilation)
+docs/                Enterprise PRDs, Architecture docs, and task tracking
+.github/             CI workflow (GitHub Actions) and pull request template
+docker-compose.yml   Local parity stack (Postgres, Redis, both APIs, agent smoke test)
+.env.example         Documented environment variables
 ```
 
-## Install
+Each runnable service (`flight_api/`, `hotel_api/`, `agent/`) contains its own `Dockerfile`. The `agent` image also bundles both MCP servers, because they currently run as `stdio` child processes of the agent (they become standalone HTTP services in SP03).
 
-Use Python 3.11+ if possible.
+## ⚙️ Installation
+
+This repository uses `pip-tools` for strict dependency locking. Ensure you have Python 3.11+ installed.
 
 ```bash
+# 1. Create and activate a virtual environment
 python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+.venv\Scripts\activate      # Windows (PowerShell)
+# source .venv/bin/activate # macOS/Linux
+
+# 2. Install dependencies from the lockfile
+pip install pip-tools
+.\scripts\sync-dev.ps1          # Windows (PowerShell)
+# pip-sync requirements.txt     # macOS / Linux
 ```
 
-On macOS/Linux, activate with:
+**Why a separate step on Windows?** `requirements.txt` is compiled in a Linux container so it matches CI and the Docker images, which means it omits Windows-only packages (notably `pywin32`, which the MCP SDK needs on Windows). `scripts/sync-dev.ps1` runs `pip-sync requirements.txt requirements-windows.txt`, adding them back. Do not run `pip-sync requirements.txt` on its own on Windows: it uninstalls them.
 
-```bash
-source .venv/bin/activate
+### Changing dependencies
+
+Edit `requirements.in` (loose top-level dependencies), then re-lock **inside a Linux container** so `requirements.txt` matches CI and the Docker images. Running `pip-compile` directly on Windows produces a Windows-specific lockfile. These scripts require Docker.
+
+```powershell
+.\scripts\compile-requirements.ps1          # Windows (PowerShell)
 ```
 
-## Run Version 1
+```bash
+bash scripts/compile-requirements.sh       # macOS / Linux / WSL
+```
 
-Terminal 1: start the flight API.
+Commit both `requirements.in` and `requirements.txt`. The CI step **Verify lockfile parity** fails the build if `requirements.txt` was not compiled this way or is out of sync with `requirements.in`.
+
+## 🐳 Run with Docker Compose
+
+Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine with the Compose plugin). No local Python setup is needed.
 
 ```bash
+docker compose up --build --abort-on-container-exit --exit-code-from agent
+```
+
+This starts Postgres (pgvector) and Redis, builds and starts both REST APIs, waits until they are healthy, then runs the agent once in mock mode with _"Help me travel from Bangalore to Delhi on 2026-06-10 and stay there"_ and exits with the agent's exit code. Postgres and Redis are provisioned for later epics; the code does not use them yet.
+
+Run your own prompt against the running stack, and clean up when finished:
+
+```bash
+docker compose up -d flight_api hotel_api
+docker compose run --rm agent python agent/agent.py "Find hotels in Delhi"
+docker compose down -v
+```
+
+_Compose reads a `.env` file automatically (copy `.env.example` to `.env` to change the Postgres defaults). The Python code does **not** load `.env`; when running locally, set variables such as `LLM_PROVIDER` in your shell as shown below._
+
+## 🚀 Run the Base Architecture
+
+### 1. Start the Microservices
+
+Terminal 1: Start the Flight API
+
+```powershell
+.\.venv\Scripts\activate
 uvicorn flight_api.app:app --reload --port 8000
 ```
 
-Terminal 2: start the hotel API.
+Terminal 2: Start the Hotel API
 
-```bash
+```powershell
+.\.venv\Scripts\activate
 uvicorn hotel_api.app:app --reload --port 8001
 ```
 
-Try it:
+_(Optional) Test the REST endpoints directly:_
 
 ```bash
 curl "http://127.0.0.1:8000/flights?origin=BLR&destination=DEL"
-curl "http://127.0.0.1:8000/flights/1"
 curl "http://127.0.0.1:8001/hotels?city=Delhi"
-curl "http://127.0.0.1:8001/hotels/1"
 ```
 
-Terminal 3: run the agent.
+### 2. Run the Multi-Server Agent
 
-```bash
-python agent/agent.py "Find flights from BLR to DEL"
-python agent/agent.py "Find hotels in Delhi"
-python agent/agent.py "What travel tools can you use?"
-```
+Terminal 3: Execute the agent logic. The agent will dynamically spawn the MCP servers, build a unified tool catalog, execute a JSON plan (in parallel where possible), and summarize the results.
 
-The agent starts both MCP servers as subprocesses, builds one combined tool catalog, then calls the selected server/tool.
-
-## Use A Free Local LLM
-
-The default real-LLM provider is now Ollama. It runs open models locally, so you do not need an OpenAI subscription or an OpenAI API key.
-
-Install Ollama from:
-
-```text
-https://ollama.com
-```
-
-Then pull a small model:
-
-```powershell
-ollama pull llama3.2
-```
-
-Start the flight API in terminal 1:
+**Option A: Deterministic Mock Planner (No API keys needed)**
 
 ```powershell
 .\.venv\Scripts\activate
-uvicorn flight_api.app:app --reload --port 8000
-```
-
-Start the hotel API in terminal 2:
-
-```powershell
-.\.venv\Scripts\activate
-uvicorn hotel_api.app:app --reload --port 8001
-```
-
-Run the agent in terminal 3:
-
-```powershell
-.\.venv\Scripts\activate
-$env:LLM_PROVIDER="ollama"
-$env:OLLAMA_MODEL="llama3.2"
-python agent/agent.py "Find the cheapest flights from BLR to DEL"
-python agent/agent.py "Find hotels in Delhi"
-```
-
-The flight and hotel APIs do not need any LLM key. Only the agent talks to the LLM.
-
-## Use OpenAI Instead
-
-OpenAI is still supported as an optional provider. To use it, set `LLM_PROVIDER=openai` and provide `OPENAI_API_KEY` only in the agent terminal.
-
-PowerShell:
-
-```powershell
-$env:LLM_PROVIDER="openai"
-$env:OPENAI_API_KEY="your_api_key_here"
-$env:OPENAI_MODEL="gpt-5.2"
-python agent/agent.py "Find the cheapest flights from BLR to DEL"
-```
-
-macOS/Linux:
-
-```bash
-export LLM_PROVIDER="openai"
-export OPENAI_API_KEY="your_api_key_here"
-export OPENAI_MODEL="gpt-5.2"
-python agent/agent.py "Find the cheapest flights from BLR to DEL"
-```
-
-With a real LLM provider, the flow becomes:
-
-```text
-User prompt
-  -> LLM creates a multi-step execution plan
-  -> MCP client runs independent steps in parallel
-  -> MCP client waits when a step depends on another step
-  -> MCP servers call their business APIs
-  -> LLM summarizes all step results for the user
-```
-
-This project intentionally uses the LLM in a simple JSON-planning loop instead of a full agent framework. That keeps the MCP client/server boundary and workflow execution easy to see.
-
-The planner returns JSON like this:
-
-```json
-{
-  "steps": [
-    {
-      "step_id": "search_flights",
-      "server_name": "flight",
-      "tool_name": "search_flights",
-      "arguments": {
-        "origin": "BLR",
-        "destination": "DEL",
-        "date": "2026-06-10"
-      },
-      "depends_on": []
-    },
-    {
-      "step_id": "search_hotels",
-      "server_name": "hotel",
-      "tool_name": "search_hotels",
-      "arguments": {
-        "city": "Delhi",
-        "check_in_date": "2026-06-10"
-      },
-      "depends_on": []
-    }
-  ]
-}
-```
-
-If a later step needs an earlier result, it uses `depends_on`. For example, hotel search can wait for flight search and use the first flight date:
-
-```json
-{
-  "step_id": "search_hotels",
-  "server_name": "hotel",
-  "tool_name": "search_hotels",
-  "arguments": {
-    "city": "Delhi",
-    "check_in_date": "$first_flight_date:search_flights"
-  },
-  "depends_on": ["search_flights"]
-}
-```
-
-## Use The Mock Planner
-
-If you want to test without any LLM at all:
-
-```powershell
 $env:LLM_PROVIDER="mock"
 python agent/agent.py "Find flights from BLR to DEL"
 python agent/agent.py "Find hotels in Delhi"
 python agent/agent.py "Help me travel from Bangalore to Delhi on 2026-06-10 and stay there"
+```
+
+**Option B: Free Local LLM (Ollama)**
+Install [Ollama](https://ollama.com) and run `ollama pull llama3.2`.
+
+```powershell
+$env:LLM_PROVIDER="ollama"
+$env:OLLAMA_MODEL="llama3.2"
+python agent/agent.py "Find the cheapest flights from BLR to DEL"
+```
+
+**Option C: OpenAI**
+
+```powershell
+$env:LLM_PROVIDER="openai"
+$env:OPENAI_API_KEY="your_api_key_here"
+$env:OPENAI_MODEL="gpt-4o"
 python agent/agent.py "Find a flight from Bangalore to Delhi and then find hotels based on when I arrive"
 ```
 
-## LangChain Or LangGraph?
+## 🧪 Testing & Linting
 
-Not yet.
+Run from the repository root with the virtual environment active:
 
-For version 1, the workflow is linear:
-
-```text
-prompt -> choose tool -> call MCP tool -> summarize result
+```bash
+ruff check .   # lint (the same check CI runs)
+pytest         # full suite: unit + integration, writes report.html
 ```
 
-LangGraph becomes useful when the workflow has branches, loops, memory, retries, approvals, or multiple agents. For example, booking a ticket in version 2 could become:
+The integration tests exercise the full path `agent → MCP (stdio) → REST API → SQLite`, so they need the APIs on ports 8000 and 8001. The test fixture reuses them if they are already running and otherwise starts (and stops) its own. To run only the fast tests that spawn no processes:
 
-```text
-search flights -> ask user to choose -> verify auth -> reserve seat -> mock payment -> confirm booking
+```bash
+pytest -m "not integration"
 ```
 
-That is a better time to introduce LangGraph. For now, a small provider switch keeps the architecture easier to understand.
+_The test suite generates a `report.html` file showing unit logic validation and full end-to-end `stdio` protocol integration checks._
 
-## Version 1 API
+Every pull request into `productionize` or `main` runs this same lint and test sequence in GitHub Actions (`.github/workflows/ci.yml`).
 
-Public endpoints:
+## 🗺️ Platform Roadmap (Epics)
 
-```text
-GET /health
-GET /flights
-GET /flights?origin=BLR&destination=DEL
-GET /flights?origin=BLR&destination=DEL&date=2026-06-10
-GET /flights/{flight_id}
-GET /hotels
-GET /hotels?city=Delhi
-GET /hotels?city=Delhi&check_in_date=2026-06-10
-GET /hotels/{hotel_id}
-```
+We are incrementally productionizing the platform through the following phases:
 
-## Version 2 Ideas
-
-Later, add:
-
-- `users` table
-- `bookings` table
-- `POST /auth/register`
-- `POST /auth/login`
-- `POST /bookings`
-- `GET /bookings/me`
-- bearer-token authentication
-- MCP tools like `book_flight` and `list_my_bookings`
-
-For this learning project, do not start with OAuth. First use a simple login endpoint that returns a bearer token. OAuth is useful later when a user authorizes your agent to access a separate third-party service.
+- [x] **SP00:** Repo Standardization, Naming Symmetry & MCP 2.x Baseline
+- [ ] **SP01:** CI/CD Pipelines, Dockerization & Serverless Terraform IaC _(Active — PR 1: CI, Docker & Compose; PR 2: Terraform & CD)_
+- [ ] **SP02:** Productionizing Flight & Hotel Core Microservices (Async Postgres, Row-Level Locking, Background Email Workers)
+- [ ] **SP03:** Stateless Streamable HTTP MCP Layer, Auth & Security Guardrails
+- [ ] **SP04:** LangGraph Multi-Agent Architecture & HITL Workflows
+- [ ] **SP05:** Native Policy RAG MCP Server & FinOps Sandbox MCP Server
+- [ ] **SP06:** Dynamic Model Router, Egress Validation, Observability & Evals

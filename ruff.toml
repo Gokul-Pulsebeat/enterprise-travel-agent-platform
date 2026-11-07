@@ -1,0 +1,15 @@
+# Ruff configuration for `ruff check .` (run locally and in CI).
+
+# The project targets Python 3.11 (see the CI workflow and the Dockerfiles). Declaring it here matters:
+# agent/agent.py uses `BaseExceptionGroup`, a 3.11 builtin that ruff would otherwise report as undefined.
+target-version = "py311"
+line-length = 120
+
+# Scratch/log folders that are not part of the codebase. `.venv` and `.git` are excluded by default.
+extend-exclude = ["work", "outputs"]
+
+[lint]
+# Ruff's default rule set, stated explicitly so it does not change silently between ruff releases:
+#   E4/E7/E9 = pycodestyle import, statement and syntax/runtime errors
+#   F        = pyflakes (unused imports/variables, undefined names, ...)
+select = ["E4", "E7", "E9", "F"]

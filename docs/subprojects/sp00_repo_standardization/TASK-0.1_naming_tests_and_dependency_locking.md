@@ -77,8 +77,8 @@ Run from the repository root with the virtual environment active (PowerShell sho
 ```powershell
 # 0. Install dependencies using the strict lockfile
 pip install pip-tools
-pip-sync requirements.txt
-# (To verify compilation logic: pip-compile requirements.in)
+pip-sync requirements.txt          # Windows: use .\scripts\sync-dev.ps1 instead (see SP01 TASK-1.1)
+# (To re-lock after editing requirements.in, use scripts/compile-requirements.ps1 or .sh; see SP01 TASK-1.1. Avoid running pip-compile directly on Windows.)
 
 # 1. Layout (AC1): old folder gone, new folder present
 Test-Path mcp_server                 # expect: False
@@ -88,7 +88,6 @@ Test-Path flight_mcp_server          # expect: True
 git grep --untracked -n "mcp.server.fastmcp" -- "*.py"                  # expect: no output
 git grep --untracked -nE "(^|[^_a-z])mcp_server" -- "*.py" README.md     # expect: no output
 
-# 3. Dependencies (AC5)
 # 3. Dependencies (AC5)
 Select-String -Path requirements.in -Pattern "mcp>=2.0.0|pytest>=8.0.0|httpx>=0.27.0"
 

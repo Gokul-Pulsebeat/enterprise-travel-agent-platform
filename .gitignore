@@ -7,3 +7,12 @@ work/*.log
 # Pytest HTML Reports
 report.html
 .pytest_cache/
+
+# Ruff
+.ruff_cache/
+
+# Local environment files (copy .env.example to .env; never commit .env)
+.env
+
+# Local Todo file for developer notes (never commit todo.txt)
+todo.txt

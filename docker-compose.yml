@@ -1,0 +1,94 @@
+# Local parity stack for the Enterprise Travel Agent Platform.
+#
+#   docker compose up --build --abort-on-container-exit --exit-code-from agent
+#
+# postgres and redis are provisioned now so later epics (SP02 Postgres, SP03/SP04 Redis, SP05 pgvector)
+# have a ready local environment, but nothing in the code uses them yet: the APIs still use SQLite.
+name: enterprise-travel-agent-platform
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-travel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-travel_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-travel_agent}
+    # Bound to localhost only: the default dev password must not be reachable from other machines.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # $$ defers expansion to the container's own environment.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Bound to localhost only: this Redis has no password.
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  flight_api:
+    build:
+      context: .
+      dockerfile: flight_api/Dockerfile
+    image: travel-agent/flight-api:local
+    ports:
+      - "8000:8000"
+    healthcheck:
+      # python:3.11-slim has no curl, so use Python's standard library. urlopen raises on non-2xx.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  hotel_api:
+    build:
+      context: .
+      dockerfile: hotel_api/Dockerfile
+    image: travel-agent/hotel-api:local
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  # One-shot smoke test: runs a prompt through agent -> MCP servers (stdio, inside this container) -> REST APIs, then exits.
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    image: travel-agent/agent:local
+    depends_on:
+      flight_api:
+        condition: service_healthy
+      hotel_api:
+        condition: service_healthy
+    environment:
+      LLM_PROVIDER: mock
+      # Service names resolve over the Compose bridge network. The agent forwards these to the MCP servers.
+      FLIGHT_API_BASE_URL: http://flight_api:8000
+      HOTEL_API_BASE_URL: http://hotel_api:8001
+    command: ["python", "agent/agent.py", "Help me travel from Bangalore to Delhi on 2026-06-10 and stay there"]
+    restart: "no"
+
+volumes:
+  postgres_data:

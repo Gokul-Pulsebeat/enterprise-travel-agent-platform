@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [productionize, main]
+  push:
+    branches: [productionize, main]
+
+# Cancel a superseded run when new commits are pushed to the same branch/PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# CI only needs to read the repository.
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install pip-tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-tools
+
+      # Fails fast if requirements.txt was compiled on an incompatible host (e.g. Windows) or is out of
+      # sync with requirements.in. Fix: run scripts/compile-requirements.ps1 (or .sh) and commit the result.
+      - name: Verify lockfile parity
+        run: |
+          # Seed with the committed lockfile so pip-compile keeps its pinned versions; otherwise a new
+          # upstream release would fail this check even though the lockfile is fine.
+          cp requirements.txt requirements.check.txt
+          pip-compile --no-header --quiet requirements.in -o requirements.check.txt
+          # Compare pins only. Comment lines (the header, "# via ...") are ignored.
+          if ! diff -u <(grep -vE '^\s*#' requirements.txt) <(grep -vE '^\s*#' requirements.check.txt); then
+            echo "::error::requirements.txt is out of sync with requirements.in or was compiled on an incompatible host. Run scripts/compile-requirements.ps1 (or .sh) to re-lock."
+            exit 1
+          fi
+
+      # pip-sync installs EXACTLY the versions pinned in requirements.txt, so CI matches local dev.
+      - name: Sync dependencies from the lockfile
+        run: pip-sync requirements.txt
+
+      - name: Lint with ruff
+        run: ruff check .
+
+      # The MCP servers call the REST APIs over HTTP, so the integration tests need real API
+      # processes (TestClient cannot serve network requests). The test fixture detects that the
+      # APIs are already healthy on ports 8000/8001 and reuses them instead of starting its own.
+      - name: Start flight_api (8000) and hotel_api (8001)
+        run: |
+          nohup uvicorn flight_api.app:app --port 8000 > flight_api.log 2>&1 &
+          nohup uvicorn hotel_api.app:app --port 8001 > hotel_api.log 2>&1 &
+
+      - name: Wait for both APIs to be healthy
+        run: |
+          for port in 8000 8001; do
+            ready=false
+            for attempt in $(seq 1 30); do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/health" || true)
+              if [ "$status" = "200" ]; then
+                ready=true
+                break
+              fi
+              sleep 1
+            done
+            if [ "$ready" != "true" ]; then
+              echo "API on port ${port} did not return HTTP 200 from /health within 30 seconds"
+              echo "--- flight_api.log ---"; cat flight_api.log || true
+              echo "--- hotel_api.log ---"; cat hotel_api.log || true
+              exit 1
+            fi
+            echo "API on port ${port} is healthy"
+          done
+
+      # pytest.ini adds -v and writes report.html; this runs unit AND integration tests.
+      - name: Run pytest (unit + integration)
+        run: pytest
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: |
+            report.html
+            flight_api.log
+            hotel_api.log
+          if-no-files-found: warn
