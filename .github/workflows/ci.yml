@@ -70,7 +70,7 @@ jobs:
         run: |
           for port in 8000 8001; do
             ready=false
-            for attempt in $(seq 1 30); do
+            for _ in $(seq 1 30); do
               status=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/health" || true)
               if [ "$status" = "200" ]; then
                 ready=true

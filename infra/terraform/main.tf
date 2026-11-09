@@ -145,9 +145,10 @@ resource "google_service_account" "deployer" {
 resource "neon_project" "main" {
   count = var.enable_neon ? 1 : 0
 
-  name       = var.neon_project_name
-  region_id  = var.neon_region_id
-  pg_version = var.neon_pg_version
+  name                      = var.neon_project_name
+  region_id                 = var.neon_region_id
+  pg_version                = var.neon_pg_version
+  history_retention_seconds = 21600 # 6 hours is the free tier limit; longer retention requires a paid plan
 
   branch {
     name          = "main"
@@ -180,11 +181,11 @@ resource "google_secret_manager_secret_version" "database_url" {
 # Upstash Redis (free tier) -> Secret Manager
 # -----------------------------------------------------------------------------
 resource "upstash_redis_database" "main" {
-  count = var.enable_upstash ? 1 : 0
-
+  count          = var.enable_upstash ? 1 : 0
   database_name  = var.upstash_database_name
   region         = "global"
   primary_region = var.upstash_primary_region
+  tls            = true
 }
 
 resource "google_secret_manager_secret" "redis_url" {
