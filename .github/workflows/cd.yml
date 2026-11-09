@@ -1,0 +1,181 @@
+name: CD
+
+# Builds both API images, deploys them to Cloud Run, verifies /health, and rolls traffic back on failure.
+# Infrastructure (Terraform) is applied manually; see docs/subprojects/sp01_cicd_and_serverless_infra/TASK-1.4_terraform_iac.md.
+on:
+  push:
+    branches: [productionize]
+  workflow_dispatch:
+    inputs:
+      rollback_drill:
+        description: "Drill: deploy normally but make the health gate fail on purpose, to prove the rollback works."
+        type: boolean
+        default: false
+
+# One deploy at a time, and never cancel a deploy that is already in flight.
+concurrency:
+  group: cd-productionize
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # lets the job exchange its GitHub OIDC token for Google credentials (Workload Identity Federation)
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION }}
+  GCP_ARTIFACT_REPO: ${{ vars.GCP_ARTIFACT_REPO }}
+  IMAGE_TAG: ${{ github.sha }}
+  HEALTH_PATH: ${{ inputs.rollback_drill && '/rollback-drill-nonexistent' || '/health' }}
+  HEALTH_ATTEMPTS: "24"
+  HEALTH_INTERVAL_SECONDS: "5"
+
+jobs:
+  deploy:
+    name: Build, Deploy & Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Optional protection: add required reviewers to the "production" environment in the repository settings.
+    environment: production
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify deployment configuration
+        env:
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          GCP_DEPLOYER_SA: ${{ vars.GCP_DEPLOYER_SA }}
+        run: |
+          missing=0
+          for name in GCP_PROJECT_ID GCP_REGION GCP_ARTIFACT_REPO GCP_WIF_PROVIDER GCP_DEPLOYER_SA; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Repository variable ${name} is not set. Run 'terraform output github_actions_variables' and add the values under Settings > Secrets and variables > Actions > Variables."
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      # Keyless authentication: no JSON key exists anywhere. GitHub's OIDC token is exchanged for a
+      # short-lived credential that impersonates the deployer service account.
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      # Images are tagged with the commit SHA only, so every revision maps to exactly one commit.
+      - name: Build and push images
+        run: |
+          registry="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPO}"
+          for module in flight_api hotel_api; do
+            image="${registry}/${module//_/-}:${IMAGE_TAG}"
+            echo "Building ${image}"
+            docker build -f "${module}/Dockerfile" -t "${image}" .
+            docker push "${image}"
+          done
+
+      # Remember which revision serves traffic now so a failed deploy can be undone.
+      - name: Record previous revisions
+        id: previous
+        run: |
+          for service in flight-api hotel-api; do
+            previous=$(gcloud run services describe "${service}" \
+              --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --format=json \
+              | jq -r '[.status.traffic[]? | select((.percent // 0) > 0) | .revisionName][0] // empty')
+            echo "Previous revision of ${service}: ${previous:-<none>}"
+            echo "${service//-/_}=${previous}" >> "${GITHUB_OUTPUT}"
+          done
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          registry="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPO}"
+          for service in flight-api hotel-api; do
+            # A unique revision name per run guarantees a NEW revision even when the image is unchanged
+            # (for example a re-run or a rollback drill), and ties each revision to a commit.
+            gcloud run deploy "${service}" \
+              --image "${registry}/${service}:${IMAGE_TAG}" \
+              --revision-suffix "${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" \
+              --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --quiet
+            # Always route 100% of traffic to the newest revision. A rollback pins traffic to a fixed
+            # revision, and later deploys do not move pinned traffic on their own, so without this a deploy
+            # after a rollback would pass the health gate while still serving the old revision.
+            gcloud run services update-traffic "${service}" --to-latest \
+              --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --quiet
+          done
+
+      - name: Post-deploy health gate
+        id: gate
+        run: |
+          failed=0
+          for service in flight-api hotel-api; do
+            url=$(gcloud run services describe "${service}" \
+              --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --format='value(status.url)')
+            echo "Checking ${url}${HEALTH_PATH}"
+            ok=false
+            for attempt in $(seq 1 "${HEALTH_ATTEMPTS}"); do
+              status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${url}${HEALTH_PATH}" || true)
+              if [ "${status}" = "200" ]; then
+                ok=true
+                break
+              fi
+              echo "  attempt ${attempt}/${HEALTH_ATTEMPTS}: HTTP ${status}"
+              sleep "${HEALTH_INTERVAL_SECONDS}"
+            done
+            if [ "${ok}" != "true" ]; then
+              echo "::error::${service} did not return HTTP 200 from ${HEALTH_PATH}"
+              failed=1
+            fi
+          done
+          exit "${failed}"
+
+      # Runs only when something after "Record previous revisions" failed. Both services are rolled back
+      # together so they never run mismatched versions. A service already on its previous revision is skipped.
+      - name: Roll back traffic to the previous revisions
+        if: failure() && steps.previous.outcome == 'success'
+        env:
+          PREVIOUS_FLIGHT_API: ${{ steps.previous.outputs.flight_api }}
+          PREVIOUS_HOTEL_API: ${{ steps.previous.outputs.hotel_api }}
+        run: |
+          rollback() {
+            local service="$1" previous="$2" current
+            if [ -z "${previous}" ]; then
+              echo "No previous revision recorded for ${service}; nothing to roll back."
+              return 0
+            fi
+            current=$(gcloud run services describe "${service}" \
+              --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --format=json \
+              | jq -r '[.status.traffic[]? | select((.percent // 0) > 0) | .revisionName][0] // empty')
+            if [ "${current}" = "${previous}" ]; then
+              echo "${service} already serves ${previous}."
+              return 0
+            fi
+            echo "Rolling ${service} back to ${previous} (was ${current:-<none>})"
+            gcloud run services update-traffic "${service}" --to-revisions "${previous}=100" \
+              --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --quiet
+          }
+          rollback flight-api "${PREVIOUS_FLIGHT_API}"
+          rollback hotel-api "${PREVIOUS_HOTEL_API}"
+          echo "::warning::Deployment of ${IMAGE_TAG} failed its health gate; traffic was rolled back."
+
+      - name: Summarize deployment
+        if: success()
+        run: |
+          {
+            echo "### Deployed ${IMAGE_TAG}"
+            for service in flight-api hotel-api; do
+              url=$(gcloud run services describe "${service}" \
+                --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --format='value(status.url)')
+              echo "- ${service}: ${url}"
+            done
+          } >> "${GITHUB_STEP_SUMMARY}"

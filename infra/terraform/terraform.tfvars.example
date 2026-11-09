@@ -1,0 +1,32 @@
+# Copy to terraform.tfvars (gitignored) and edit. Only the two required values must be set.
+#
+# NEVER put API keys in this file. Provide credentials through the environment instead:
+#   PowerShell:  $env:TF_VAR_neon_api_key    = "..."
+#                $env:TF_VAR_upstash_email   = "you@example.com"
+#                $env:TF_VAR_upstash_api_key = "..."
+#   (Neon also honors NEON_API_KEY.) Google credentials come from:  gcloud auth application-default login
+
+# --- Required -----------------------------------------------------------------------------------
+project_id        = "your-gcp-project-id"
+github_repository = "your-github-user-or-org/enterprise-travel-agent-platform"
+
+# --- GCP (defaults shown) -------------------------------------------------------------------------
+# region                       = "us-central1"
+# artifact_registry_repository = "travel-agent"
+# max_instances                = 2
+# allow_unauthenticated        = true   # APIs have no auth until SP03; the CD health gate needs it
+# deletion_protection          = false
+# deploy_branch                = "productionize"
+
+# --- Neon Postgres (free tier) ---------------------------------------------------------------------
+# enable_neon        = true    # set false to skip Neon (still set a placeholder TF_VAR_neon_api_key if plan complains)
+# neon_region_id     = "aws-us-east-2"
+# neon_project_name  = "enterprise-travel-agent"
+# neon_pg_version    = 16
+# neon_database_name = "travel_agent"
+# neon_role_name     = "travel_app"
+
+# --- Upstash Redis (free tier) ---------------------------------------------------------------------
+# enable_upstash         = true
+# upstash_primary_region = "us-east-1"
+# upstash_database_name  = "enterprise-travel-agent"

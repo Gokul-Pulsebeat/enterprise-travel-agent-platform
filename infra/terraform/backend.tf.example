@@ -1,0 +1,20 @@
+# Optional: remote state in Google Cloud Storage. Not active (the .example suffix keeps Terraform from loading it).
+#
+# WHY: Terraform state contains secrets (the Neon connection string and Upstash password end up in it). Local
+# state is fine for a first experiment, but anything shared or long-lived should use an encrypted bucket with
+# restricted access, versioning and locking.
+#
+# To enable:
+#   1. Create the bucket once (it cannot be managed by the same Terraform that uses it):
+#        gcloud storage buckets create gs://<project-id>-tfstate --location=us-central1 --uniform-bucket-level-access
+#        gcloud storage buckets update gs://<project-id>-tfstate --versioning
+#   2. Copy this file to backend.tf and replace the bucket name.
+#   3. Run: terraform init -migrate-state
+#
+# Backend blocks cannot use variables, so the bucket name must be written literally.
+terraform {
+  backend "gcs" {
+    bucket = "your-project-id-tfstate"
+    prefix = "enterprise-travel-agent/sp01"
+  }
+}

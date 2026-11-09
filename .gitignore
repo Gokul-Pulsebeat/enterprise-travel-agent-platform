@@ -16,3 +16,13 @@ report.html
 
 # Local Todo file for developer notes (never commit todo.txt)
 todo.txt
+
+# Terraform: commit .terraform.lock.hcl, but NEVER state (it contains secrets), plans, or real tfvars
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+*.tfvars
+*.tfvars.json
