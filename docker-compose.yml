@@ -49,7 +49,13 @@ services:
       - "8000:8000"
     healthcheck:
       # python:3.11-slim has no curl, so use Python's standard library. urlopen raises on non-2xx.
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -64,7 +70,13 @@ services:
     ports:
       - "8001:8001"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -87,7 +99,12 @@ services:
       # Service names resolve over the Compose bridge network. The agent forwards these to the MCP servers.
       FLIGHT_API_BASE_URL: http://flight_api:8000
       HOTEL_API_BASE_URL: http://hotel_api:8001
-    command: ["python", "agent/agent.py", "Help me travel from Bangalore to Delhi on 2026-06-10 and stay there"]
+    command:
+      [
+        "python",
+        "agent/agent.py",
+        "Help me travel from Bangalore to Delhi on 2026-06-10 and stay there",
+      ]
     restart: "no"
 
 volumes:

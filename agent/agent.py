@@ -150,7 +150,9 @@ def infer_route(prompt: str) -> tuple[str, str] | None:
 
 
 # Define a helper that creates one executable plan step.
-def make_step(step_id: str, server_name: str, tool_name: str, arguments: dict, depends_on: list[str] | None = None) -> dict:
+def make_step(
+    step_id: str, server_name: str, tool_name: str, arguments: dict, depends_on: list[str] | None = None
+) -> dict:
     # Return the normalized step dictionary used by the executor.
     return {
         "step_id": step_id,
@@ -198,9 +200,13 @@ def plan_with_mock(prompt: str) -> dict:
     # If hotel search is requested, add a hotel step.
     if wants_hotel:
         # Pick the destination city from the route when available; otherwise use a known city in the prompt.
-        destination_city = AIRPORT_TO_CITY.get(route[1]) if route else next(
-            (city.title() for city in CITY_TO_AIRPORT if city in prompt_lower),
-            None,
+        destination_city = (
+            AIRPORT_TO_CITY.get(route[1])
+            if route
+            else next(
+                (city.title() for city in CITY_TO_AIRPORT if city in prompt_lower),
+                None,
+            )
         )
         # If a destination city was found, build a hotel step.
         if destination_city:
@@ -580,7 +586,10 @@ async def execute_step(step: dict, sessions: dict[str, ClientSession], completed
     # Resolve arguments, including any placeholders from previous results.
     arguments = resolve_arguments(step.get("arguments", {}), completed)
     # Print the step that is about to run.
-    debug_print("Executing step", {"step_id": step_id, "server_name": server_name, "tool_name": tool_name, "arguments": arguments})
+    debug_print(
+        "Executing step",
+        {"step_id": step_id, "server_name": server_name, "tool_name": tool_name, "arguments": arguments},
+    )
     # Reject unknown MCP server names.
     if server_name not in sessions:
         # Raise a clear setup/planning error.
@@ -678,7 +687,9 @@ async def run_agent(prompt: str) -> str:
         # If the prompt asks for tools, return the combined catalog.
         if "tool" in prompt.lower() or "what can you" in prompt.lower():
             # Return compact server.tool labels.
-            return "Available MCP tools: " + ", ".join(f"{tool['server_name']}.{tool['name']}" for tool in available_tools)
+            return "Available MCP tools: " + ", ".join(
+                f"{tool['server_name']}.{tool['name']}" for tool in available_tools
+            )
 
         # Create a multi-step plan with either the LLM or mock planner.
         plan = plan_with_llm(prompt, available_tools) if use_real_llm else plan_with_mock(prompt)

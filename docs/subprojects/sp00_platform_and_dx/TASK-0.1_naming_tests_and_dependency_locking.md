@@ -1,11 +1,11 @@
 # TASK-0.1 — Naming Standardization, Baseline Tests & Dependency Locking
 
-| Field         | Value                                                                                                                    |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Epic          | SP00 — Repo Standardization, Naming Symmetry & MCP 2.x Baseline                                                          |
-| Branch        | `feat/sp00-baseline-standardization-and-mcp2`                                                                            |
-| Target branch | `productionize`                                                                                                          |
-| Parent docs   | [`00_MASTER_PRD.md`](../../00_MASTER_PRD.md), [`01_STEP_0_POC_BASELINE_AUDIT.md`](../../01_STEP_0_POC_BASELINE_AUDIT.md) |
+| Field         | Value                                                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Epic          | SP00 — Platform, DX & Repo Standardization                                                                                                             |
+| Branch        | `feat/sp00-baseline-standardization-and-mcp2`                                                                                                          |
+| Target branch | `productionize`                                                                                                                                        |
+| Parent docs   | [`EPIC_PRD.md`](EPIC_PRD.md), [`00_MASTER_PRD.md`](../../00_MASTER_PRD.md), [`01_STEP_0_POC_BASELINE_AUDIT.md`](../../01_STEP_0_POC_BASELINE_AUDIT.md) |
 
 ---
 

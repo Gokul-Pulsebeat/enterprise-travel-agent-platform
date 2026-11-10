@@ -36,7 +36,7 @@ def list_hotels(
     city: Optional[str] = Query(default=None, description="City name, for example Delhi"),
     # Read the optional `check_in_date` query parameter, such as `?check_in_date=2026-06-10`.
     check_in_date: Optional[str] = Query(default=None, description="Check-in date in YYYY-MM-DD format"),
-# Tell FastAPI and readers that this endpoint returns a list of dictionaries.
+    # Tell FastAPI and readers that this endpoint returns a list of dictionaries.
 ) -> list[dict]:
     # Start with a query that returns all hotel rows.
     query = "SELECT * FROM hotels WHERE 1 = 1"

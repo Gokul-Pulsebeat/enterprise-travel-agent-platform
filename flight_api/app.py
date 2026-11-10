@@ -38,7 +38,7 @@ def list_flights(
     destination: Optional[str] = Query(default=None, description="Airport code, for example DEL"),
     # Read the optional `date` query parameter, such as `?date=2026-06-10`.
     date: Optional[str] = Query(default=None, description="Departure date in YYYY-MM-DD format"),
-# Tell FastAPI and readers that this endpoint returns a list of dictionaries.
+    # Tell FastAPI and readers that this endpoint returns a list of dictionaries.
 ) -> list[dict]:
     # Start with a query that returns all rows; `1 = 1` makes later `AND` clauses easy to append.
     query = "SELECT * FROM flights WHERE 1 = 1"

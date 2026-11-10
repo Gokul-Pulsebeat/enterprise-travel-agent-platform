@@ -1,13 +1,13 @@
 # TASK-1.3 — Docker Compose Local Stack
 
-| Field         | Value                                                                                          |
-| ------------- | ---------------------------------------------------------------------------------------------- |
-| Epic          | SP01 — CI/CD Pipelines, Dockerization & Serverless Terraform IaC                               |
-| PR            | PR 1 of 2                                                                                      |
-| Branch        | `feat/sp01-cicd-and-docker`                                                                    |
-| Target branch | `productionize`                                                                                |
-| Depends on    | TASK-1.2 (images)                                                                              |
-| Parent docs   | [`EPIC_PRD.md`](EPIC_PRD.md), [`00_MASTER_PRD.md`](../../00_MASTER_PRD.md)                     |
+| Field         | Value                                                                      |
+| ------------- | -------------------------------------------------------------------------- |
+| Epic          | SP01 — CI/CD Pipelines, Dockerization & Serverless Terraform IaC           |
+| PR            | PR 1 of 2                                                                  |
+| Branch        | `feat/sp01-cicd-and-docker`                                                |
+| Target branch | `productionize`                                                            |
+| Depends on    | TASK-1.2 (images)                                                          |
+| Parent docs   | [`EPIC_PRD.md`](EPIC_PRD.md), [`00_MASTER_PRD.md`](../../00_MASTER_PRD.md) |
 
 ---
 
@@ -19,20 +19,20 @@ One command brings up a complete local environment that mirrors the production t
 
 ### In scope
 
-| Area                  | Change                                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------- |
-| `docker-compose.yml`  | Five services: `postgres`, `redis`, `flight_api`, `hotel_api`, `agent`, plus a named volume `postgres_data` |
-| `.env.example`        | Documents every environment variable used for local development and Compose                             |
+| Area                 | Change                                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `docker-compose.yml` | Five services: `postgres`, `redis`, `flight_api`, `hotel_api`, `agent`, plus a named volume `postgres_data` |
+| `.env.example`       | Documents every environment variable used for local development and Compose                                 |
 
 ### Services
 
-| Service      | Image / build                                      | Ports                   | Healthcheck                                                | Notes                                                                                                   |
-| ------------ | -------------------------------------------------- | ----------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `postgres`   | `pgvector/pgvector:pg16`                           | `127.0.0.1:5432:5432`   | `pg_isready`                                               | Named volume `postgres_data`. Ready for SP02 and SP05; not used by code yet                             |
-| `redis`      | `redis:7-alpine`                                   | `127.0.0.1:6379:6379`   | `redis-cli ping`                                           | Ready for SP03/SP04; not used by code yet                                                               |
-| `flight_api` | build `flight_api/Dockerfile` (root context)       | `8000:8000`             | Python `urllib.request` against `http://127.0.0.1:8000/health` | `python:3.11-slim` has no `curl`                                                                        |
-| `hotel_api`  | build `hotel_api/Dockerfile` (root context)        | `8001:8001`             | Python `urllib.request` against `http://127.0.0.1:8001/health` |                                                                                                         |
-| `agent`      | build `agent/Dockerfile` (root context)            | none                    | none (one-shot)                                            | Waits for both APIs to be healthy, then runs a smoke prompt and exits                                   |
+| Service      | Image / build                                | Ports                 | Healthcheck                                                    | Notes                                                                       |
+| ------------ | -------------------------------------------- | --------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `postgres`   | `pgvector/pgvector:pg16`                     | `127.0.0.1:5432:5432` | `pg_isready`                                                   | Named volume `postgres_data`. Ready for SP02 and SP05; not used by code yet |
+| `redis`      | `redis:7-alpine`                             | `127.0.0.1:6379:6379` | `redis-cli ping`                                               | Ready for SP03/SP04; not used by code yet                                   |
+| `flight_api` | build `flight_api/Dockerfile` (root context) | `8000:8000`           | Python `urllib.request` against `http://127.0.0.1:8000/health` | `python:3.11-slim` has no `curl`                                            |
+| `hotel_api`  | build `hotel_api/Dockerfile` (root context)  | `8001:8001`           | Python `urllib.request` against `http://127.0.0.1:8001/health` |                                                                             |
+| `agent`      | build `agent/Dockerfile` (root context)      | none                  | none (one-shot)                                                | Waits for both APIs to be healthy, then runs a smoke prompt and exits       |
 
 ### Out of scope
 
@@ -56,17 +56,17 @@ One command brings up a complete local environment that mirrors the production t
 
 ## 4. Acceptance Criteria
 
-| #    | Criterion                                                                                                                                       |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| AC1  | `docker compose config` validates the file with no errors.                                                                                      |
-| AC2  | `postgres` uses `pgvector/pgvector:pg16`, a named data volume, and a `pg_isready` healthcheck, and becomes healthy.                             |
-| AC3  | `redis` uses `redis:7-alpine` with a `redis-cli ping` healthcheck and becomes healthy.                                                          |
-| AC4  | `flight_api` (8000) and `hotel_api` (8001) build from the root context and become healthy via the Python `urllib.request` healthchecks.        |
-| AC5  | `agent` starts only after both APIs are healthy, runs with `LLM_PROVIDER=mock` and the Compose-network API URLs, and exits with code 0.         |
-| AC6  | The agent's output contains flights (`AI101`, `6E202`) and hotels (`Delhi Stay`, `Budget Inn Delhi`), proving the full path across containers. |
-| AC7  | The pgvector extension can be created in the Postgres container.                                                                                |
-| AC8  | `.env.example` documents all environment variables used across local development and Compose, and no real secrets.                             |
-| AC9  | Data in `postgres_data` survives `docker compose down` and is removed only by `docker compose down -v`.                                         |
+| #   | Criterion                                                                                                                                      |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC1 | `docker compose config` validates the file with no errors.                                                                                     |
+| AC2 | `postgres` uses `pgvector/pgvector:pg16`, a named data volume, and a `pg_isready` healthcheck, and becomes healthy.                            |
+| AC3 | `redis` uses `redis:7-alpine` with a `redis-cli ping` healthcheck and becomes healthy.                                                         |
+| AC4 | `flight_api` (8000) and `hotel_api` (8001) build from the root context and become healthy via the Python `urllib.request` healthchecks.        |
+| AC5 | `agent` starts only after both APIs are healthy, runs with `LLM_PROVIDER=mock` and the Compose-network API URLs, and exits with code 0.        |
+| AC6 | The agent's output contains flights (`AI101`, `6E202`) and hotels (`Delhi Stay`, `Budget Inn Delhi`), proving the full path across containers. |
+| AC7 | The pgvector extension can be created in the Postgres container.                                                                               |
+| AC8 | `.env.example` documents all environment variables used across local development and Compose, and no real secrets.                             |
+| AC9 | Data in `postgres_data` survives `docker compose down` and is removed only by `docker compose down -v`.                                        |
 
 ## 5. Verification Commands
 
@@ -118,9 +118,9 @@ Remove-Item .env
 
 ## 7. Risks
 
-| Risk                                                                                      | Mitigation                                                                                                                  |
-| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Port conflicts with services already running locally (8000, 8001, 5432, 6379)             | Stop local servers first, or change the host side of the port mapping                                                       |
-| Compose parity drifts from Cloud Run behavior                                             | PR 2 (Terraform/CD) reuses the same images; parity gaps are reviewed there                                                  |
-| Unused Postgres and Redis containers consume resources                                    | Accepted: they are provisioned now so SP02-SP05 start with a ready environment; start only needed services with `docker compose up -d <service>` |
-| Using the Ollama or OpenAI providers from the agent container                              | Smoke test pins `mock`. For other providers, pass `-e LLM_PROVIDER=...` and use `host.docker.internal` for a host-side Ollama (documented in `.env.example`) |
+| Risk                                                                          | Mitigation                                                                                                                                                   |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Port conflicts with services already running locally (8000, 8001, 5432, 6379) | Stop local servers first, or change the host side of the port mapping                                                                                        |
+| Compose parity drifts from Cloud Run behavior                                 | PR 2 (Terraform/CD) reuses the same images; parity gaps are reviewed there                                                                                   |
+| Unused Postgres and Redis containers consume resources                        | Accepted: they are provisioned now so SP02-SP05 start with a ready environment; start only needed services with `docker compose up -d <service>`             |
+| Using the Ollama or OpenAI providers from the agent container                 | Smoke test pins `mock`. For other providers, pass `-e LLM_PROVIDER=...` and use `host.docker.internal` for a host-side Ollama (documented in `.env.example`) |

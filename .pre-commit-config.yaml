@@ -1,0 +1,61 @@
+# Pre-commit hooks for local developer experience (SP00 / TASK-0.2).
+#
+#   Install once per clone (virtual environment active):   pre-commit install
+#   Run every hook on every tracked file:                   pre-commit run --all-files
+#   Bump all hook versions:                                 pre-commit autoupdate
+#
+# Where each hook is enforced in CI:
+#   ruff-check              -> job "Lint & Test" (`ruff check .`)
+#   ruff-format, prettier   -> job "Format check (Ruff & Prettier)", which runs these same hooks from this file
+#   terraform_fmt/_validate -> job "Terraform fmt & validate"
+#   actionlint              -> job "Lint workflows (actionlint)"
+#
+# Prerequisites: the Terraform hooks need `terraform` on your PATH (winget install Hashicorp.Terraform).
+# Everything else (Node for Prettier, Go for actionlint) is downloaded by pre-commit on first use.
+
+minimum_pre_commit_version: "4.0.0"
+
+repos:
+  # Python lint + format. Keep this rev in sync with the ruff version pinned in requirements.txt so
+  # local and CI results agree. Configuration lives in ruff.toml.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.4
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # YAML, JSON and Markdown formatting (default Prettier settings).
+  # Uses the maintained community mirror rbubley/mirrors-prettier, which tracks current Prettier releases.
+  # (The original pre-commit/mirrors-prettier is archived and frozen at 3.x.)
+  # The CI format check runs this same hook, so bumping `rev` here (pre-commit autoupdate) updates CI too.
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.9.10
+    hooks:
+      - id: prettier
+        types_or: [yaml, json, markdown]
+
+  # Terraform formatting and validation, scoped to infra/terraform/.
+  # Uses `repo: local` and `language: system` to invoke the native terraform binary
+  # directly on Windows, macOS, and Linux without requiring a bash or WSL wrapper.
+  - repo: local
+    hooks:
+      - id: terraform_fmt
+        name: Terraform fmt
+        entry: terraform -chdir=infra/terraform fmt -recursive
+        language: system
+        files: ^infra/terraform/.*\.tf$
+        pass_filenames: false
+      - id: terraform_validate
+        name: Terraform validate
+        entry: terraform -chdir=infra/terraform validate
+        language: system
+        files: ^infra/terraform/.*\.tf$
+        pass_filenames: false
+
+  # GitHub Actions workflow linting (syntax, expressions, action inputs, and shellcheck on run: scripts).
+  # Keep this rev in sync with the actionlint version used by the CI job.
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
