@@ -15,7 +15,7 @@ We utilize a **4-Server Multi-Domain MCP Tool Layer** to cleanly decouple domain
 
 **👉 [Read the Master PRD & Engineering Roadmap](docs/00_MASTER_PRD.md) for the full target architecture and sub-project breakdown.**
 
-## 📂 Project Folders (Current Phase: SP01)
+## 📂 Project Folders (Current Phase: SP02)
 
 ```text
 flight_api/          FastAPI REST service (Flight state & business logic)
@@ -51,6 +51,29 @@ pip install pip-tools
 ```
 
 **Why a separate step on Windows?** `requirements.txt` is compiled in a Linux container so it matches CI and the Docker images, which means it omits Windows-only packages (notably `pywin32`, which the MCP SDK needs on Windows). `scripts/sync-dev.ps1` runs `pip-sync requirements.txt requirements-windows.txt`, adding them back. Do not run `pip-sync requirements.txt` on its own on Windows: it uninstalls them.
+
+### Enable pre-commit hooks
+
+After syncing your virtual environment, install the Git hooks once per clone:
+
+```powershell
+pre-commit install
+```
+
+From then on, every `git commit` runs these hooks on the files you changed:
+
+- **Ruff**: lint with auto-fix, and format, for Python
+- **Prettier**: formats YAML, JSON and Markdown
+- **Terraform**: `terraform fmt` and `terraform validate` on `infra/terraform/`
+- **actionlint**: validates `.github/workflows/`
+
+If a hook rewrites files (the formatters do), the commit is stopped so you can review the changes: `git add` them and commit again. To run every hook on the whole repository at any time:
+
+```powershell
+pre-commit run --all-files
+```
+
+The first run downloads tools (Node for Prettier, Go for actionlint) and takes a few minutes. The Terraform hooks need `terraform` on your `PATH` (`winget install Hashicorp.Terraform`).CI re-runs every check (`ruff check`, `ruff-format`, `prettier`, `terraform fmt`/`validate`, and `actionlint`), so skipping the hooks with `--no-verify` will still fail the pull request.
 
 ### Changing dependencies
 
@@ -194,7 +217,7 @@ pytest -m "not integration"
 
 _The test suite generates a `report.html` file showing unit logic validation and full end-to-end `stdio` protocol integration checks._
 
-Every pull request into `productionize` or `main` runs this same lint and test sequence in GitHub Actions (`.github/workflows/ci.yml`), plus a `Terraform fmt & validate` job. To run the Terraform checks locally:
+Every pull request into `productionize` or `main` runs this same lint and test sequence in GitHub Actions (`.github/workflows/ci.yml`), plus `Format check (Ruff & Prettier)`, `Terraform fmt & validate`, and `Lint workflows (actionlint)` jobs. To run the Terraform checks locally:
 
 ```powershell
 terraform -chdir=infra/terraform fmt -check -recursive
@@ -206,8 +229,8 @@ terraform -chdir=infra/terraform validate
 
 We are incrementally productionizing the platform through the following phases:
 
-- [x] **SP00:** Repo Standardization, Naming Symmetry & MCP 2.x Baseline
-- [ ] **SP01:** CI/CD Pipelines, Dockerization & Serverless Terraform IaC _(Active — PR 1 (CI, Docker & Compose) merged; PR 2: Terraform & CD)_
+- [x] **SP00:** Platform, DX & Repo Standardization _(Continuous track — naming symmetry, MCP 2.x baseline and dependency locking done; ongoing platform, tooling and chore tasks)_
+- [x] **SP01:** CI/CD Pipelines, Dockerization & Serverless Terraform IaC _(Completed — CI, Docker & Compose, Terraform & CD to Cloud Run)_
 - [ ] **SP02:** Productionizing Flight & Hotel Core Microservices (Async Postgres, Row-Level Locking, Background Email Workers)
 - [ ] **SP03:** Stateless Streamable HTTP MCP Layer, Auth & Security Guardrails
 - [ ] **SP04:** LangGraph Multi-Agent Architecture & HITL Workflows

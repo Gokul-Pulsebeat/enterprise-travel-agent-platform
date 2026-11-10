@@ -1,13 +1,13 @@
 # TASK-1.1 — GitHub Actions CI
 
-| Field         | Value                                                                                                                  |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Epic          | SP01 — CI/CD Pipelines, Dockerization & Serverless Terraform IaC                                                       |
-| PR            | PR 1 of 2                                                                                                              |
-| Branch        | `feat/sp01-cicd-and-docker`                                                                                            |
-| Target branch | `productionize`                                                                                                        |
-| Depends on    | SP00 (pinned lockfile, pytest suite, `report.html`)                                                                    |
-| Parent docs   | [`EPIC_PRD.md`](EPIC_PRD.md), [`00_MASTER_PRD.md`](../../00_MASTER_PRD.md)                                             |
+| Field         | Value                                                                      |
+| ------------- | -------------------------------------------------------------------------- |
+| Epic          | SP01 — CI/CD Pipelines, Dockerization & Serverless Terraform IaC           |
+| PR            | PR 1 of 2                                                                  |
+| Branch        | `feat/sp01-cicd-and-docker`                                                |
+| Target branch | `productionize`                                                            |
+| Depends on    | SP00 (pinned lockfile, pytest suite, `report.html`)                        |
+| Parent docs   | [`EPIC_PRD.md`](EPIC_PRD.md), [`00_MASTER_PRD.md`](../../00_MASTER_PRD.md) |
 
 ---
 
@@ -19,13 +19,13 @@ Make quality gates automatic. Every pull request and every push to `productioniz
 
 ### In scope
 
-| Area                        | Change                                                                                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `.github/workflows/ci.yml`  | New workflow: lint, start APIs, wait for health, run `pytest`, upload report                                                                                 |
-| `requirements.in`           | Add `ruff>=0.9.0` (the lockfile `requirements.txt` is recompiled with `pip-compile`)                                                                         |
-| `ruff.toml`                 | Ruff configuration: `target-version = "py311"`, explicit rule set `E4, E7, E9, F`, excludes for scratch folders                                              |
-| `agent/agent.py`            | Whitespace/blank-line formatting fixes in `extract_text_content` so the file is clean                                                                        |
-| `.gitignore`                | Add `.ruff_cache/` and `.env`                                                                                                                                |
+| Area                       | Change                                                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml` | New workflow: lint, start APIs, wait for health, run `pytest`, upload report                                    |
+| `requirements.in`          | Add `ruff>=0.9.0` (the lockfile `requirements.txt` is recompiled with `pip-compile`)                            |
+| `ruff.toml`                | Ruff configuration: `target-version = "py311"`, explicit rule set `E4, E7, E9, F`, excludes for scratch folders |
+| `agent/agent.py`           | Whitespace/blank-line formatting fixes in `extract_text_content` so the file is clean                           |
+| `.gitignore`               | Add `.ruff_cache/` and `.env`                                                                                   |
 
 ### Lockfile tooling (added with this task)
 
@@ -60,21 +60,21 @@ Make quality gates automatic. Every pull request and every push to `productioniz
 
 ## 4. Acceptance Criteria
 
-| #    | Criterion                                                                                                                                       |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| AC1  | `.github/workflows/ci.yml` triggers on `pull_request` to `productionize` and `main`, and on `push` to `productionize` and `main`.               |
-| AC2  | The job runs on `ubuntu-latest` with Python `3.11` and pip caching enabled.                                                                     |
-| AC3  | Dependencies are installed with `pip-tools` via `pip-sync requirements.txt`.                                                                    |
-| AC4  | `requirements.in` contains `ruff>=0.9.0` and the recompiled `requirements.txt` pins `ruff==`.                                                   |
-| AC5  | `ruff check .` passes with no errors locally and in CI.                                                                                         |
-| AC6  | CI starts `flight_api` on 8000 and `hotel_api` on 8001 and waits for HTTP 200 from both `/health` endpoints before running tests.               |
-| AC7  | `pytest` runs unit **and** integration tests in CI (nothing is deselected) and passes.                                                          |
-| AC8  | `report.html` is uploaded as a workflow artifact on every run, including failures (`if: always()`, `actions/upload-artifact@v4`).               |
-| AC9  | `.gitignore` excludes `.ruff_cache/` and `.env`.                                                                                                |
-| AC10 | `scripts/compile-requirements.ps1` and `.sh` exist and regenerate `requirements.txt` inside a `python:3.11-slim` container.                    |
-| AC11 | CI runs a **Verify lockfile parity** step before `pip-sync` that fails when `requirements.txt` differs from a Linux recompile of `requirements.in`. |
+| #    | Criterion                                                                                                                                                                                                      |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC1  | `.github/workflows/ci.yml` triggers on `pull_request` to `productionize` and `main`, and on `push` to `productionize` and `main`.                                                                              |
+| AC2  | The job runs on `ubuntu-latest` with Python `3.11` and pip caching enabled.                                                                                                                                    |
+| AC3  | Dependencies are installed with `pip-tools` via `pip-sync requirements.txt`.                                                                                                                                   |
+| AC4  | `requirements.in` contains `ruff>=0.9.0` and the recompiled `requirements.txt` pins `ruff==`.                                                                                                                  |
+| AC5  | `ruff check .` passes with no errors locally and in CI.                                                                                                                                                        |
+| AC6  | CI starts `flight_api` on 8000 and `hotel_api` on 8001 and waits for HTTP 200 from both `/health` endpoints before running tests.                                                                              |
+| AC7  | `pytest` runs unit **and** integration tests in CI (nothing is deselected) and passes.                                                                                                                         |
+| AC8  | `report.html` is uploaded as a workflow artifact on every run, including failures (`if: always()`, `actions/upload-artifact@v4`).                                                                              |
+| AC9  | `.gitignore` excludes `.ruff_cache/` and `.env`.                                                                                                                                                               |
+| AC10 | `scripts/compile-requirements.ps1` and `.sh` exist and regenerate `requirements.txt` inside a `python:3.11-slim` container.                                                                                    |
+| AC11 | CI runs a **Verify lockfile parity** step before `pip-sync` that fails when `requirements.txt` differs from a Linux recompile of `requirements.in`.                                                            |
 | AC12 | `requirements-windows.txt` and `scripts/sync-dev.ps1` exist; on Windows, `scripts/sync-dev.ps1` installs the lockfile plus the Windows-only packages and `pytest` passes locally. CI does not use either file. |
-| AC13 | *(Manual)* Branch protection on `productionize` and `main` requires the `Lint & Test` status check before merging.                              |
+| AC13 | _(Manual)_ Branch protection on `productionize` and `main` requires the `Lint & Test` status check before merging.                                                                                             |
 
 ## 5. Verification Commands
 
@@ -122,10 +122,10 @@ git push -u origin feat/sp01-cicd-and-docker
 
 ## 7. Risks
 
-| Risk                                                                                                                         | Mitigation                                                                                                                       |
-| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `requirements.txt` compiled on Windows may contain platform-specific pins that behave differently under `pip-sync` on Linux  | Re-lock only with `scripts/compile-requirements.ps1` / `.sh` (Linux container); the **Verify lockfile parity** CI step fails fast if a host-compiled lockfile is pushed                                                  |
-| New Windows-only transitive dependency appears (`ImportError` on Windows only) | Add it to `requirements-windows.txt`; CI and Docker are unaffected |
-| Fixed ports 8000/8001 could clash on a shared runner                                                                         | GitHub-hosted runners are single-job VMs; the health wait fails loudly with logs if a port is unavailable                        |
-| Background processes started in one step must survive into later steps                                                       | `nohup` is used and the health-wait step verifies both APIs before tests run                                                     |
-| Open-ended `>=` ranges in `requirements.in` can pull new versions on recompile                                               | Versions only change when someone runs `pip-compile`; CI always installs the committed lockfile                                  |
+| Risk                                                                                                                        | Mitigation                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requirements.txt` compiled on Windows may contain platform-specific pins that behave differently under `pip-sync` on Linux | Re-lock only with `scripts/compile-requirements.ps1` / `.sh` (Linux container); the **Verify lockfile parity** CI step fails fast if a host-compiled lockfile is pushed |
+| New Windows-only transitive dependency appears (`ImportError` on Windows only)                                              | Add it to `requirements-windows.txt`; CI and Docker are unaffected                                                                                                      |
+| Fixed ports 8000/8001 could clash on a shared runner                                                                        | GitHub-hosted runners are single-job VMs; the health wait fails loudly with logs if a port is unavailable                                                               |
+| Background processes started in one step must survive into later steps                                                      | `nohup` is used and the health-wait step verifies both APIs before tests run                                                                                            |
+| Open-ended `>=` ranges in `requirements.in` can pull new versions on recompile                                              | Versions only change when someone runs `pip-compile`; CI always installs the committed lockfile                                                                         |

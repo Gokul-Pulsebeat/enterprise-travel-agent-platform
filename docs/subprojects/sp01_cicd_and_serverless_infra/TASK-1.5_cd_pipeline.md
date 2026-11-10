@@ -1,13 +1,13 @@
 # TASK-1.5 — Continuous Deployment Pipeline
 
-| Field         | Value                                                                                          |
-| ------------- | ---------------------------------------------------------------------------------------------- |
-| Epic          | SP01 — CI/CD Pipelines, Dockerization & Serverless Terraform IaC                               |
-| PR            | PR 2 of 2                                                                                      |
-| Branch        | `feat/sp01-terraform-and-cd`                                                                   |
-| Target branch | `productionize`                                                                                |
-| Depends on    | TASK-1.4 (registry, services, WIF, deployer account), TASK-1.2 (Dockerfiles), TASK-1.1 (CI)    |
-| Parent docs   | [`EPIC_PRD.md`](EPIC_PRD.md), [`00_MASTER_PRD.md`](../../00_MASTER_PRD.md)                     |
+| Field         | Value                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| Epic          | SP01 — CI/CD Pipelines, Dockerization & Serverless Terraform IaC                            |
+| PR            | PR 2 of 2                                                                                   |
+| Branch        | `feat/sp01-terraform-and-cd`                                                                |
+| Target branch | `productionize`                                                                             |
+| Depends on    | TASK-1.4 (registry, services, WIF, deployer account), TASK-1.2 (Dockerfiles), TASK-1.1 (CI) |
+| Parent docs   | [`EPIC_PRD.md`](EPIC_PRD.md), [`00_MASTER_PRD.md`](../../00_MASTER_PRD.md)                  |
 
 ---
 
@@ -19,10 +19,10 @@ Every merge to `productionize` ships to Cloud Run with no manual steps, safely. 
 
 ### In scope
 
-| Area                         | Change                                                                                                                                              |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/cd.yml`   | New workflow: trigger on push to `productionize` and on `workflow_dispatch`; WIF auth; build, push, deploy; `/health` gate; automatic rollback      |
-| `.github/workflows/ci.yml`   | `Terraform fmt & validate` job (delivered with TASK-1.4; it is the Terraform check required by this task)                                           |
+| Area                       | Change                                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/cd.yml` | New workflow: trigger on push to `productionize` and on `workflow_dispatch`; WIF auth; build, push, deploy; `/health` gate; automatic rollback |
+| `.github/workflows/ci.yml` | `Terraform fmt & validate` job (delivered with TASK-1.4; it is the Terraform check required by this task)                                      |
 
 ### Out of scope
 
@@ -70,9 +70,10 @@ push to productionize  (or manual run)
 **Image tagging.** Images are tagged only with the full commit SHA, never `latest`. Each Cloud Run revision therefore maps to exactly one commit, and a rollback target is always an immutable image.
 
 **Traffic and rollback mechanics.**
-- Every run deploys with a unique revision name (`<service>-<sha7>-<run number>-<attempt>`). That guarantees a *new* revision even when the image is unchanged (a re-run, or a rollback drill), because Cloud Run creates no revision for an identical template, and it ties each revision to a commit.
+
+- Every run deploys with a unique revision name (`<service>-<sha7>-<run number>-<attempt>`). That guarantees a _new_ revision even when the image is unchanged (a re-run, or a rollback drill), because Cloud Run creates no revision for an identical template, and it ties each revision to a commit.
 - Before deploying, the pipeline records the revision that currently receives traffic for each service.
-- After `gcloud run deploy`, it always runs `update-traffic --to-latest`. This matters: a rollback pins traffic to a fixed revision, and Cloud Run does not move *pinned* traffic to new revisions on its own. Without the explicit step, a deploy after a rollback would pass the health gate while still serving the old revision.
+- After `gcloud run deploy`, it always runs `update-traffic --to-latest`. This matters: a rollback pins traffic to a fixed revision, and Cloud Run does not move _pinned_ traffic to new revisions on its own. Without the explicit step, a deploy after a rollback would pass the health gate while still serving the old revision.
 - On any failure after the recording step, both services are rolled back together to their recorded revisions, so flight and hotel never run mismatched versions. A service already serving its recorded revision is skipped. If nothing was recorded (the failure happened earlier, e.g. in the build), the rollback step is skipped because nothing was deployed.
 - The job still ends red after a successful rollback, so a bad deploy is never mistaken for a good one.
 - Terraform ignores image and traffic changes (TASK-1.4), so a later `terraform apply` neither reverts a deploy nor undoes a rollback.
@@ -89,20 +90,20 @@ push to productionize  (or manual run)
 
 ## 4. Acceptance Criteria
 
-| #    | Criterion                                                                                                                                                                  |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AC1  | `.github/workflows/cd.yml` triggers on `push` to `productionize` and on `workflow_dispatch`.                                                                               |
+| #    | Criterion                                                                                                                                                                                            |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC1  | `.github/workflows/cd.yml` triggers on `push` to `productionize` and on `workflow_dispatch`.                                                                                                         |
 | AC2  | Authentication uses Workload Identity Federation (`google-github-actions/auth` with `workload_identity_provider` and `service_account`); no JSON key or long-lived credential is used or referenced. |
-| AC3  | The workflow requests `id-token: write` and otherwise only `contents: read`.                                                                                               |
-| AC4  | `flight_api` and `hotel_api` images are built from the repository root and pushed to Artifact Registry tagged with the commit SHA.                                         |
-| AC5  | Both services are deployed to Cloud Run from those images, and traffic is explicitly routed to the latest revision after each deploy.                                       |
-| AC6  | After deploying, the pipeline polls each service's `/health` URL and fails the job unless both return HTTP 200 within the timeout.                                          |
-| AC7  | On failure after deployment started, traffic for both services is restored to the revisions recorded before the deploy, and the job still fails.                            |
-| AC8  | The rollback drill (`workflow_dispatch` with `rollback_drill = true`) fails the gate, triggers the rollback, and the services keep serving the previous revisions with HTTP 200. |
-| AC9  | A deploy after a rollback serves the new revision (traffic is restored to latest).                                                                                         |
-| AC10 | Missing repository variables fail fast with an actionable message before any GCP call.                                                                                     |
-| AC11 | A Terraform `fmt -check` and `validate` job runs in CI (see TASK-1.4 AC11).                                                                                                 |
-| AC12 | `actionlint` reports no errors for `cd.yml` and `ci.yml`.                                                                                                                  |
+| AC3  | The workflow requests `id-token: write` and otherwise only `contents: read`.                                                                                                                         |
+| AC4  | `flight_api` and `hotel_api` images are built from the repository root and pushed to Artifact Registry tagged with the commit SHA.                                                                   |
+| AC5  | Both services are deployed to Cloud Run from those images, and traffic is explicitly routed to the latest revision after each deploy.                                                                |
+| AC6  | After deploying, the pipeline polls each service's `/health` URL and fails the job unless both return HTTP 200 within the timeout.                                                                   |
+| AC7  | On failure after deployment started, traffic for both services is restored to the revisions recorded before the deploy, and the job still fails.                                                     |
+| AC8  | The rollback drill (`workflow_dispatch` with `rollback_drill = true`) fails the gate, triggers the rollback, and the services keep serving the previous revisions with HTTP 200.                     |
+| AC9  | A deploy after a rollback serves the new revision (traffic is restored to latest).                                                                                                                   |
+| AC10 | Missing repository variables fail fast with an actionable message before any GCP call.                                                                                                               |
+| AC11 | A Terraform `fmt -check` and `validate` job runs in CI (see TASK-1.4 AC11).                                                                                                                          |
+| AC12 | `actionlint` reports no errors for `cd.yml` and `ci.yml`.                                                                                                                                            |
 
 ## 5. Verification Commands
 
@@ -154,13 +155,13 @@ gcloud run services describe flight-api --region <region> --format "value(status
 
 ## 7. Risks
 
-| Risk                                                                                                          | Mitigation                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| First run fails with a missing permission (least-privilege roles are narrow)                                  | The `gcloud` error names the permission; grant the narrowest resource-level role in Terraform and record it in TASK-1.4               |
-| Workflow has not been executed against a real project in the authoring environment                            | `actionlint` plus the rollback drill (steps 1 and 6) validate it before it is trusted                                                   |
-| A bad deploy passes `/health` but is functionally broken                                                      | The gate is a liveness check; deeper checks arrive with SP02 (DB) and SP06 (evals). Manual rollback is documented above                |
-| CD and CI run in parallel on `productionize`                                                                  | Require CI on PRs and forbid direct pushes to the branch                                                                                |
-| `allow_unauthenticated = false` breaks the gate (public URL no longer reachable)                              | Adapt the gate to send an identity token, or run the gate from inside the project. Keep the default until SP03 adds app-level auth      |
-| Old images deleted by the registry cleanup policy break a rollback                                            | Policy keeps the 10 newest versions per image, far more than any rollback target                                                        |
-| Third-party actions (`google-github-actions/*`, `hashicorp/setup-terraform`) change                           | Pinned to major versions; Dependabot or a periodic review can move them to commit SHAs                                                  |
-| Two services deployed one after the other briefly run different versions                                      | Acceptable for read-only APIs that do not call each other; if a deploy fails, both roll back together                                   |
+| Risk                                                                                | Mitigation                                                                                                                         |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| First run fails with a missing permission (least-privilege roles are narrow)        | The `gcloud` error names the permission; grant the narrowest resource-level role in Terraform and record it in TASK-1.4            |
+| Workflow has not been executed against a real project in the authoring environment  | `actionlint` plus the rollback drill (steps 1 and 6) validate it before it is trusted                                              |
+| A bad deploy passes `/health` but is functionally broken                            | The gate is a liveness check; deeper checks arrive with SP02 (DB) and SP06 (evals). Manual rollback is documented above            |
+| CD and CI run in parallel on `productionize`                                        | Require CI on PRs and forbid direct pushes to the branch                                                                           |
+| `allow_unauthenticated = false` breaks the gate (public URL no longer reachable)    | Adapt the gate to send an identity token, or run the gate from inside the project. Keep the default until SP03 adds app-level auth |
+| Old images deleted by the registry cleanup policy break a rollback                  | Policy keeps the 10 newest versions per image, far more than any rollback target                                                   |
+| Third-party actions (`google-github-actions/*`, `hashicorp/setup-terraform`) change | Pinned to major versions; Dependabot or a periodic review can move them to commit SHAs                                             |
+| Two services deployed one after the other briefly run different versions            | Acceptable for read-only APIs that do not call each other; if a deploy fails, both roll back together                              |

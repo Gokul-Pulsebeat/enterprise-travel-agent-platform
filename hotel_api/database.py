@@ -85,4 +85,3 @@ def init_db() -> None:
 def row_to_dict(row: sqlite3.Row) -> dict:
     # Convert the row object into `{column_name: value}` form for JSON responses.
     return dict(row)
-

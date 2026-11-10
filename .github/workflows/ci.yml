@@ -102,6 +102,37 @@ jobs:
             hotel_api.log
           if-no-files-found: warn
 
+  format-check:
+    name: Format check (Ruff & Prettier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install pre-commit
+        run: pip install pre-commit>=4.0.0
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run Ruff format check
+        run: pre-commit run ruff-format --all-files --show-diff-on-failure
+
+      - name: Run Prettier check
+        run: pre-commit run prettier --all-files --show-diff-on-failure
+
   terraform-check:
     name: Terraform fmt & validate
     runs-on: ubuntu-latest
@@ -127,3 +158,19 @@ jobs:
 
       - name: terraform validate
         run: terraform -chdir=infra/terraform validate
+
+  actionlint:
+    name: Lint workflows (actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Validates .github/workflows/*.yml: syntax, expressions, action inputs, and shellcheck on run: scripts.
+      # Keep the version in sync with the actionlint rev in .pre-commit-config.yaml.
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
