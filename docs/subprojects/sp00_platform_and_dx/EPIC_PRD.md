@@ -1,6 +1,6 @@
 # EPIC SP00 — Platform, DX & Repo Standardization
 
-**Status:** Continuous track (no end date) — TASK-0.1 complete, TASK-0.2 in progress
+**Status:** Continuous track (no end date) — TASK-0.1 complete, TASK-0.2 in complete
 **Depends on:** none
 **Master PRD:** [`../../00_MASTER_PRD.md`](../../00_MASTER_PRD.md)
 

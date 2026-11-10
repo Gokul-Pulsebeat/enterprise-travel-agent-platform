@@ -229,7 +229,21 @@ terraform -chdir=infra/terraform validate
 
 We are incrementally productionizing the platform through the following phases:
 
-- [x] **SP00:** Platform, DX & Repo Standardization _(Continuous track — naming symmetry, MCP 2.x baseline and dependency locking done; ongoing platform, tooling and chore tasks)_
+- [x] **SP00:**
+      Platform, DX &
+      Repo
+      Standardization
+      _(Continuous track
+      — naming symmetry,
+      MCP 2.x baseline
+      and dependency
+      locking,
+      linting/formatting
+      both locally and in
+      CI done;
+      ongoing platform,
+      tooling and chore
+      tasks)_
 - [x] **SP01:** CI/CD Pipelines, Dockerization & Serverless Terraform IaC _(Completed — CI, Docker & Compose, Terraform & CD to Cloud Run)_
 - [ ] **SP02:** Productionizing Flight & Hotel Core Microservices (Async Postgres, Row-Level Locking, Background Email Workers)
 - [ ] **SP03:** Stateless Streamable HTTP MCP Layer, Auth & Security Guardrails
