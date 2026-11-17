@@ -1,87 +1,86 @@
-# Import `Path` so we can build a database file path relative to this Python file.
-from pathlib import Path
+"""Table definitions for the hotel service (schema ``hotel`` in the shared Postgres database).
 
-# Import Python's built-in SQLite library for the local mock hotel database.
-import sqlite3
+These SQLAlchemy Core definitions mirror migration ``0001``. Queries are built from them, and Alembic uses the
+metadata for autogenerate. Always change the schema through a new Alembic revision, never by editing 0001.
+"""
 
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Column,
+    Date,
+    Float,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    MetaData,
+    Table,
+    Text,
+    UniqueConstraint,
+    func,
+    select,
+)
+from sqlalchemy.sql import Select
 
-# Build the path `hotel_api/hotels.db` beside this `database.py` file.
-DB_PATH = Path(__file__).with_name("hotels.db")
+# Every table of this service lives in its own Postgres schema, qualified explicitly in code (the connection's
+# search_path is never relied on). Alembic keeps this service's version history in the same schema.
+SCHEMA = "hotel"
 
+# Advisory-lock key that serializes this service's start-up migrations (the flight service uses a different key).
+MIGRATION_LOCK_KEY = 7_202_602
 
-# Define simple mock hotel rows that will be inserted into SQLite on first startup.
-MOCK_HOTELS = [
-    # Mock hotel 1: name, city, area, check-in date, check-out date, nightly price, rooms, rating.
-    ("Delhi Stay", "Delhi", "Connaught Place", "2026-06-10", "2026-06-11", 4200, 5, 4.2),
-    # Mock hotel 2: another Delhi option with a lower price.
-    ("Budget Inn Delhi", "Delhi", "Karol Bagh", "2026-06-10", "2026-06-11", 2600, 12, 3.8),
-    # Mock hotel 3: Mumbai option for cross-city testing.
-    ("Sea View Mumbai", "Mumbai", "Marine Drive", "2026-06-11", "2026-06-12", 7800, 3, 4.6),
-    # Mock hotel 4: Bengaluru option for local-city testing.
-    ("Garden City Hotel", "Bengaluru", "Indiranagar", "2026-06-12", "2026-06-13", 5100, 7, 4.1),
-    # Mock hotel 5: Chennai option for another simple route.
-    ("Marina Comfort", "Chennai", "Mylapore", "2026-06-13", "2026-06-14", 3900, 9, 4.0),
-]
+metadata = MetaData(schema=SCHEMA)
 
+# The property itself: what stays true regardless of which dates are on offer.
+hotels = Table(
+    "hotels",
+    metadata,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("city", Text, nullable=False),
+    Column("area", Text, nullable=False),
+    Column("rating", Float, nullable=False),
+    UniqueConstraint("name", "city", name="uq_hotels_name_city"),
+    CheckConstraint("rating >= 0 AND rating <= 5", name="ck_hotels_rating_range"),
+)
+Index("ix_hotels_city_upper", func.upper(hotels.c.city))
 
-# Define a helper function that opens a SQLite connection.
-def get_connection() -> sqlite3.Connection:
-    # Connect to the local SQLite database file.
-    connection = sqlite3.connect(DB_PATH)
-    # Make query results behave like dictionaries keyed by column name.
-    connection.row_factory = sqlite3.Row
-    # Return the configured database connection to the caller.
-    return connection
-
-
-# Define a helper function that creates and seeds the hotel database.
-def init_db() -> None:
-    # Open a database connection and automatically close/commit it when the block ends.
-    with get_connection() as connection:
-        # Create the `hotels` table if it does not already exist.
-        connection.execute(
-            # This SQL statement defines the columns for the mock hotel table.
-            """
-            CREATE TABLE IF NOT EXISTS hotels (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                city TEXT NOT NULL,
-                area TEXT NOT NULL,
-                check_in_date TEXT NOT NULL,
-                check_out_date TEXT NOT NULL,
-                price_per_night INTEGER NOT NULL,
-                rooms_available INTEGER NOT NULL,
-                rating REAL NOT NULL
-            )
-            """
-        )
-
-        # Count how many rows already exist so we do not insert duplicate mock data.
-        count = connection.execute("SELECT COUNT(*) FROM hotels").fetchone()[0]
-        # Seed the table only when it is empty.
-        if count == 0:
-            # Insert every tuple from `MOCK_HOTELS` into the `hotels` table.
-            connection.executemany(
-                # This SQL statement inserts one hotel row using placeholder values.
-                """
-                INSERT INTO hotels (
-                    name,
-                    city,
-                    area,
-                    check_in_date,
-                    check_out_date,
-                    price_per_night,
-                    rooms_available,
-                    rating
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                # Provide the mock hotel tuples as the values for the SQL placeholders.
-                MOCK_HOTELS,
-            )
+# A bookable stay window with a price and an inventory count. This is the unit that bookings will lock and
+# decrement (TASK-2.3), and the `id` the REST API exposes for a hotel result.
+hotel_offers = Table(
+    "hotel_offers",
+    metadata,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column(
+        "hotel_id",
+        BigInteger,
+        ForeignKey("hotel.hotels.id", name="fk_hotel_offers_hotel_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("check_in_date", Date, nullable=False),
+    Column("check_out_date", Date, nullable=False),
+    Column("price_per_night", Integer, nullable=False),
+    Column("rooms_available", Integer, nullable=False),
+    UniqueConstraint("hotel_id", "check_in_date", "check_out_date", name="uq_hotel_offers_hotel_dates"),
+    CheckConstraint("check_out_date > check_in_date", name="ck_hotel_offers_checkout_after_checkin"),
+    CheckConstraint("price_per_night >= 0", name="ck_hotel_offers_price_non_negative"),
+    CheckConstraint("rooms_available >= 0", name="ck_hotel_offers_rooms_non_negative"),
+    Index("ix_hotel_offers_hotel_checkin", "hotel_id", "check_in_date"),
+)
 
 
-# Define a helper function that converts a SQLite row into a normal Python dictionary.
-def row_to_dict(row: sqlite3.Row) -> dict:
-    # Convert the row object into `{column_name: value}` form for JSON responses.
-    return dict(row)
+def offer_select() -> Select:
+    """The flat hotel shape the REST API returns: each offer joined to its property."""
+    return select(
+        hotel_offers.c.id,
+        hotel_offers.c.hotel_id,
+        hotels.c.name,
+        hotels.c.city,
+        hotels.c.area,
+        hotel_offers.c.check_in_date,
+        hotel_offers.c.check_out_date,
+        hotel_offers.c.price_per_night,
+        hotel_offers.c.rooms_available,
+        hotels.c.rating,
+    ).select_from(hotel_offers.join(hotels, hotel_offers.c.hotel_id == hotels.c.id))

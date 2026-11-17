@@ -1,6 +1,6 @@
 name: CD
 
-# Builds both API images, deploys them to Cloud Run, verifies /health, and rolls traffic back on failure.
+# Builds both API images, deploys them to Cloud Run, verifies /ready (the service can reach its database), and rolls traffic back on failure.
 # Infrastructure (Terraform) is applied manually; see docs/subprojects/sp01_cicd_and_serverless_infra/TASK-1.4_terraform_iac.md.
 on:
   push:
@@ -26,7 +26,7 @@ env:
   GCP_REGION: ${{ vars.GCP_REGION }}
   GCP_ARTIFACT_REPO: ${{ vars.GCP_ARTIFACT_REPO }}
   IMAGE_TAG: ${{ github.sha }}
-  HEALTH_PATH: ${{ inputs.rollback_drill && '/rollback-drill-nonexistent' || '/health' }}
+  HEALTH_PATH: ${{ inputs.rollback_drill && '/rollback-drill-nonexistent' || '/ready' }}
   HEALTH_ATTEMPTS: "24"
   HEALTH_INTERVAL_SECONDS: "5"
 

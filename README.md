@@ -23,6 +23,7 @@ flight_mcp_server/   MCP v2 server exposing flight logic as agent tools
 hotel_api/           FastAPI REST service (Hotel state & business logic)
 hotel_mcp_server/    MCP v2 server exposing hotel logic as agent tools
 agent/               Agent orchestrator and dynamic MCP client
+common/              Shared database plumbing for the REST services (async engine, URL handling, migrations)
 tests/               Baseline pytest suite (Unit & Integration)
 scripts/             Helper scripts (containerized lockfile compilation)
 docs/                Enterprise PRDs, Architecture docs, and task tracking
@@ -73,7 +74,7 @@ If a hook rewrites files (the formatters do), the commit is stopped so you can r
 pre-commit run --all-files
 ```
 
-The first run downloads tools (Node for Prettier, Go for actionlint) and takes a few minutes. The Terraform hooks need `terraform` on your `PATH` (`winget install Hashicorp.Terraform`).CI re-runs every check (`ruff check`, `ruff-format`, `prettier`, `terraform fmt`/`validate`, and `actionlint`), so skipping the hooks with `--no-verify` will still fail the pull request.
+The first run downloads tools (Node for Prettier, Go for actionlint) and takes a few minutes. The Terraform hooks need `terraform` on your `PATH` (`winget install Hashicorp.Terraform`). CI re-runs every check (`ruff check`, `ruff-format`, `prettier`, `terraform fmt`/`validate`, and `actionlint`), so skipping the hooks with `--no-verify` will still fail the pull request.
 
 ### Changing dependencies
 
@@ -97,7 +98,7 @@ Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or D
 docker compose up --build --abort-on-container-exit --exit-code-from agent
 ```
 
-This starts Postgres (pgvector) and Redis, builds and starts both REST APIs, waits until they are healthy, then runs the agent once in mock mode with _"Help me travel from Bangalore to Delhi on 2026-06-10 and stay there"_ and exits with the agent's exit code. Postgres and Redis are provisioned for later epics; the code does not use them yet.
+This starts Postgres (pgvector) and Redis, builds and starts both REST APIs, waits until they are ready, then runs the agent once in mock mode with _"Help me travel from Bangalore to Delhi on 2026-06-10 and stay there"_ and exits with the agent's exit code. Both APIs run on the Postgres service, each in its own schema (`flight` and `hotel`), and migrate and seed it when they start. Redis is provisioned for later epics; nothing uses it yet.
 
 Run your own prompt against the running stack, and clean up when finished:
 
@@ -118,11 +119,11 @@ merge to productionize
   -> GitHub Actions authenticates to GCP via Workload Identity Federation (no JSON keys)
   -> build + push flight-api / hotel-api images to Artifact Registry, tagged with the commit SHA
   -> deploy to Cloud Run
-  -> poll /health on both services (post-deploy gate)
+  -> poll /ready on both services (post-deploy gate: the service is up and can reach its database)
   -> on failure: roll BOTH services back to the previous revisions automatically
 ```
 
-**What Terraform provisions:** Artifact Registry, two Cloud Run services (scale-to-zero, capped at 2 instances), Secret Manager secrets, least-privilege service accounts, Workload Identity Federation limited to this repository's `productionize` branch, a Neon Postgres project and an Upstash Redis database (free tiers). Their connection strings are injected into the services as `DATABASE_URL` / `REDIS_URL` through Secret Manager; the applications do not use them until SP02+.
+**What Terraform provisions:** Artifact Registry, two Cloud Run services (scale-to-zero, capped at 2 instances), Secret Manager secrets, least-privilege service accounts, Workload Identity Federation limited to this repository's `productionize` branch, a Neon Postgres project and an Upstash Redis database (free tiers). Their connection strings are injected into the services as `DATABASE_URL` / `REDIS_URL` through Secret Manager. Both APIs use `DATABASE_URL` (Neon Postgres, one schema per service) from SP02; `REDIS_URL` is used from SP03.
 
 **One-time setup** (you need a GCP project with billing enabled, plus Neon and Upstash accounts; see [TASK-1.4](docs/subprojects/sp01_cicd_and_serverless_infra/TASK-1.4_terraform_iac.md) for details):
 
@@ -144,6 +145,16 @@ After the variables are set, the next push to `productionize` (or **Actions → 
 _Terraform state contains secrets: never commit it (it is gitignored) and prefer the remote GCS backend described in `infra/terraform/backend.tf.example` for anything shared. Commit `.terraform.lock.hcl`, generated for all platforms with `terraform providers lock`._
 
 ## 🚀 Run the Base Architecture
+
+### 0. Start the database
+
+Both REST APIs need PostgreSQL. The Compose file provides it (the first start of each API creates its schema and seeds the mock data):
+
+```powershell
+docker compose up -d postgres
+```
+
+The APIs read `DATABASE_URL` and default to this Compose database (`postgresql://travel:travel_dev_password@127.0.0.1:5432/travel_agent`), so no configuration is needed locally. See `.env.example` for the other settings.
 
 ### 1. Start the Microservices
 
@@ -206,13 +217,13 @@ Run from the repository root with the virtual environment active:
 
 ```bash
 ruff check .   # lint (the same check CI runs)
-pytest         # full suite: unit + integration, writes report.html
+pytest         # full suite: unit + database + integration, writes report.html
 ```
 
-The integration tests exercise the full path `agent → MCP (stdio) → REST API → SQLite`, so they need the APIs on ports 8000 and 8001. The test fixture reuses them if they are already running and otherwise starts (and stops) its own. To run only the fast tests that spawn no processes:
+The API, migration and integration tests run against a real **PostgreSQL** server, so start it first with `docker compose up -d postgres`. They use their own databases (`travel_agent_test` and `travel_agent_test_migrations`, created automatically), never your development data; set `TEST_DATABASE_URL` to use another server. If Postgres is unreachable the tests fail with instructions rather than skip. The integration tests exercise the full path `agent → MCP (stdio) → REST API → PostgreSQL`, so they need the APIs on ports 8000 and 8001. The test fixture reuses them if they are already running and otherwise starts (and stops) its own. To run only the fast tests that need neither a database nor subprocesses:
 
 ```bash
-pytest -m "not integration"
+pytest -m "not db and not integration"
 ```
 
 _The test suite generates a `report.html` file showing unit logic validation and full end-to-end `stdio` protocol integration checks._
@@ -229,9 +240,9 @@ terraform -chdir=infra/terraform validate
 
 We are incrementally productionizing the platform through the following phases:
 
-- [x] **SP00:** Platform, DX & Repo Standardization _(Continuous track — naming symmetry, MCP 2.x baseline and dependency locking done; ongoing platform, tooling and chore tasks)_
+- [x] **SP00:** Platform, DX & Repo Standardization _(Continuous track — naming symmetry, MCP 2.x baseline, dependency locking, and linting/formatting both locally and in CI done; ongoing platform, tooling and chore tasks)_
 - [x] **SP01:** CI/CD Pipelines, Dockerization & Serverless Terraform IaC _(Completed — CI, Docker & Compose, Terraform & CD to Cloud Run)_
-- [ ] **SP02:** Productionizing Flight & Hotel Core Microservices (Async Postgres, Row-Level Locking, Background Email Workers)
+- [ ] **SP02:** Productionizing Flight & Hotel Core Microservices (Async Postgres, Row-Level Locking, Background Email Workers) _(Active — TASK-2.1: async PostgreSQL migration)_
 - [ ] **SP03:** Stateless Streamable HTTP MCP Layer, Auth & Security Guardrails
 - [ ] **SP04:** LangGraph Multi-Agent Architecture & HITL Workflows
 - [ ] **SP05:** Native Policy RAG MCP Server & FinOps Sandbox MCP Server
