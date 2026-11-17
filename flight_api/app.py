@@ -1,6 +1,6 @@
 """Flight REST API: async FastAPI on PostgreSQL (SQLAlchemy 2.0 Core + asyncpg)."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import date as date_type
 from datetime import datetime, time, timedelta
@@ -20,7 +20,7 @@ DbConnection = Annotated[AsyncConnection, Depends(get_connection)]
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Create the engine, migrate and seed the database, then serve; dispose the engine on shutdown.
 
     uvicorn finishes this start-up before it opens the listening socket, so a failed migration stops the

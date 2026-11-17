@@ -183,6 +183,39 @@ jobs:
       - name: terraform validate
         run: terraform -chdir=infra/terraform validate
 
+  container-security-check:
+    name: Container Security & Non-Root Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build flight_api image
+        run: docker build -f flight_api/Dockerfile -t travel-agent/flight-api:test .
+
+      - name: Assert non-root execution (flight_api)
+        run: |
+          uid=$(docker run --rm travel-agent/flight-api:test id -u)
+          if [ "$uid" = "0" ]; then
+            echo "::error::flight_api container is running as root (UID 0)!"
+            exit 1
+          fi
+          echo "flight_api runs securely as non-root (UID $uid)"
+
+      - name: Build hotel_api image
+        run: docker build -f hotel_api/Dockerfile -t travel-agent/hotel-api:test .
+
+      - name: Assert non-root execution (hotel_api)
+        run: |
+          uid=$(docker run --rm travel-agent/hotel-api:test id -u)
+          if [ "$uid" = "0" ]; then
+            echo "::error::hotel_api container is running as root (UID 0)!"
+            exit 1
+          fi
+          echo "hotel_api runs securely as non-root (UID $uid)"
+
   actionlint:
     name: Lint workflows (actionlint)
     runs-on: ubuntu-latest
