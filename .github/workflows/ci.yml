@@ -21,6 +21,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # A real PostgreSQL server for the tests: the same image as docker-compose.yml and the same major version as
+    # Neon. The credentials are throwaway values for this ephemeral container, not secrets.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: travel
+          POSTGRES_PASSWORD: travel_ci_password
+          POSTGRES_DB: travel_agent_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U travel -d travel_agent_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Used by the pytest fixtures, and by the API processes started below (they inherit DATABASE_URL).
+      TEST_DATABASE_URL: postgresql://travel:travel_ci_password@127.0.0.1:5432/travel_agent_test
+      DATABASE_URL: postgresql://travel:travel_ci_password@127.0.0.1:5432/travel_agent_test
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -60,18 +82,19 @@ jobs:
 
       # The MCP servers call the REST APIs over HTTP, so the integration tests need real API
       # processes (TestClient cannot serve network requests). The test fixture detects that the
-      # APIs are already healthy on ports 8000/8001 and reuses them instead of starting its own.
+      # APIs are already ready on ports 8000/8001 and reuses them instead of starting its own.
+      # Each API migrates and seeds the Postgres service container (DATABASE_URL) before it listens.
       - name: Start flight_api (8000) and hotel_api (8001)
         run: |
           nohup uvicorn flight_api.app:app --port 8000 > flight_api.log 2>&1 &
           nohup uvicorn hotel_api.app:app --port 8001 > hotel_api.log 2>&1 &
 
-      - name: Wait for both APIs to be healthy
+      - name: Wait for both APIs to be ready
         run: |
           for port in 8000 8001; do
             ready=false
             for _ in $(seq 1 30); do
-              status=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/health" || true)
+              status=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/ready" || true)
               if [ "$status" = "200" ]; then
                 ready=true
                 break
@@ -79,12 +102,12 @@ jobs:
               sleep 1
             done
             if [ "$ready" != "true" ]; then
-              echo "API on port ${port} did not return HTTP 200 from /health within 30 seconds"
+              echo "API on port ${port} did not return HTTP 200 from /ready within 30 seconds"
               echo "--- flight_api.log ---"; cat flight_api.log || true
               echo "--- hotel_api.log ---"; cat hotel_api.log || true
               exit 1
             fi
-            echo "API on port ${port} is healthy"
+            echo "API on port ${port} is ready"
           done
 
       # pytest.ini adds -v and writes report.html; this runs unit AND integration tests.
@@ -118,8 +141,9 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
+      # The requirement is quoted: unquoted, the shell would treat `>=4.0.0` as an output redirect.
       - name: Install pre-commit
-        run: pip install pre-commit>=4.0.0
+        run: pip install "pre-commit>=4.0.0"
 
       - name: Cache pre-commit environments
         uses: actions/cache@v4

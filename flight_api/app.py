@@ -1,96 +1,101 @@
-# Import `Optional` so query parameters can be typed as either a string or missing.
-from typing import Optional
+"""Flight REST API: async FastAPI on PostgreSQL (SQLAlchemy 2.0 Core + asyncpg)."""
 
-# Import FastAPI to create the web app, HTTPException for errors, and Query for query params.
-from fastapi import FastAPI, HTTPException, Query
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import date as date_type
+from datetime import datetime, time, timedelta
+from pathlib import Path
+from typing import Annotated, Optional
 
-# Import database helpers from our local business-service database module.
-from flight_api.database import get_connection, init_db, row_to_dict
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from common.db import MAX_BIGINT, build_engine, check_ready, env_flag, get_connection, migrate_and_seed
+from flight_api.database import MIGRATION_LOCK_KEY, flight_select, flights
+from flight_api.seed import seed_mock_data
+
+# One pooled connection per request, injected into the endpoints below.
+DbConnection = Annotated[AsyncConnection, Depends(get_connection)]
 
 
-# Create the FastAPI application object that Uvicorn will serve.
-app = FastAPI(title="Flight Search API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the engine, migrate and seed the database, then serve; dispose the engine on shutdown.
+
+    uvicorn finishes this start-up before it opens the listening socket, so a failed migration stops the
+    process and the platform never routes traffic to a half-initialized instance.
+    """
+    engine = build_engine()
+    try:
+        await migrate_and_seed(
+            engine,
+            migrations_dir=Path(__file__).with_name("migrations"),
+            lock_key=MIGRATION_LOCK_KEY,
+            seed=seed_mock_data if env_flag("SEED_MOCK_DATA", default=True) else None,
+        )
+    except BaseException:
+        await engine.dispose()
+        raise
+    app.state.engine = engine
+    try:
+        yield
+    finally:
+        await engine.dispose()
 
 
-# Register this function to run when the FastAPI app starts.
-@app.on_event("startup")
-# Define the startup function that prepares the local database.
-def startup() -> None:
-    # Create the SQLite table and seed mock data if needed.
-    init_db()
+app = FastAPI(title="Flight Search API", version="1.0.0", lifespan=lifespan)
 
 
-# Register a public health-check endpoint at `GET /health`.
 @app.get("/health")
-# Define the health-check function.
-def health() -> dict:
-    # Return a tiny JSON object showing that the API process is alive.
+async def health() -> dict:
+    """Liveness: the process is up. Deliberately does not touch the database."""
     return {"status": "ok"}
 
 
-# Register a public flight-list/search endpoint at `GET /flights`.
+@app.get("/ready")
+async def ready(request: Request) -> JSONResponse:
+    """Readiness: the database answers a trivial query. Used by the CD health gate and Docker Compose."""
+    if await check_ready(request.app.state.engine):
+        return JSONResponse({"status": "ready"})
+    return JSONResponse({"status": "unavailable"}, status_code=503)
+
+
 @app.get("/flights")
-# Define the function that handles flight listing and optional filtering.
-def list_flights(
-    # Read the optional `origin` query parameter, such as `?origin=BLR`.
-    origin: Optional[str] = Query(default=None, description="Airport code, for example BLR"),
-    # Read the optional `destination` query parameter, such as `?destination=DEL`.
-    destination: Optional[str] = Query(default=None, description="Airport code, for example DEL"),
-    # Read the optional `date` query parameter, such as `?date=2026-06-10`.
-    date: Optional[str] = Query(default=None, description="Departure date in YYYY-MM-DD format"),
-    # Tell FastAPI and readers that this endpoint returns a list of dictionaries.
+async def list_flights(
+    connection: DbConnection,
+    origin: Optional[str] = Query(default=None, description="Origin airport code, for example BLR"),
+    destination: Optional[str] = Query(default=None, description="Destination airport code, for example DEL"),
+    date: Optional[date_type] = Query(default=None, description="Departure date, YYYY-MM-DD"),
 ) -> list[dict]:
-    # Start with a query that returns all rows; `1 = 1` makes later `AND` clauses easy to append.
-    query = "SELECT * FROM flights WHERE 1 = 1"
-    # Create the list of SQL parameters that will safely fill the `?` placeholders.
-    params: list[str] = []
+    """Search flights, earliest departure first. Filters are optional and case-insensitive."""
+    statement = flight_select().order_by(flights.c.departure_time, flights.c.id)
 
-    # Check whether the caller supplied an origin filter.
     if origin:
-        # Add a case-insensitive origin comparison to the SQL query.
-        query += " AND UPPER(origin) = UPPER(?)"
-        # Add the user-provided origin value as a SQL parameter.
-        params.append(origin)
-
-    # Check whether the caller supplied a destination filter.
+        statement = statement.where(flights.c.origin_code == origin.strip().upper())
     if destination:
-        # Add a case-insensitive destination comparison to the SQL query.
-        query += " AND UPPER(destination) = UPPER(?)"
-        # Add the user-provided destination value as a SQL parameter.
-        params.append(destination)
-
-    # Check whether the caller supplied a departure date filter.
+        statement = statement.where(flights.c.destination_code == destination.strip().upper())
     if date:
-        # Match the first 10 characters of the ISO departure timestamp, which is YYYY-MM-DD.
-        query += " AND substr(departure_time, 1, 10) = ?"
-        # Add the user-provided date value as a SQL parameter.
-        params.append(date)
+        # A half-open range on the timestamp (instead of casting the column) keeps the index usable.
+        day_start = datetime.combine(date, time.min)
+        statement = statement.where(
+            flights.c.departure_time >= day_start,
+            flights.c.departure_time < day_start + timedelta(days=1),
+        )
 
-    # Sort results by departure time so earlier flights appear first.
-    query += " ORDER BY departure_time"
-
-    # Open a database connection for the query.
-    with get_connection() as connection:
-        # Execute the query with parameters and fetch every matching row.
-        rows = connection.execute(query, params).fetchall()
-
-    # Convert SQLite rows into normal dictionaries so FastAPI can return JSON.
-    return [row_to_dict(row) for row in rows]
+    result = await connection.execute(statement)
+    return [dict(row) for row in result.mappings()]
 
 
-# Register a public detail endpoint such as `GET /flights/1`.
 @app.get("/flights/{flight_id}")
-# Define the function that fetches one flight by its ID.
-def get_flight(flight_id: int) -> dict:
-    # Open a database connection for the lookup.
-    with get_connection() as connection:
-        # Query exactly one row by primary key.
-        row = connection.execute("SELECT * FROM flights WHERE id = ?", (flight_id,)).fetchone()
-
-    # Check whether SQLite found no matching row.
-    if row is None:
-        # Return an HTTP 404 error when the requested flight ID does not exist.
+async def get_flight(flight_id: int, connection: DbConnection) -> dict:
+    """Return one flight by ID, or 404 if it does not exist."""
+    # IDs outside BIGINT's range cannot exist; answering 404 here avoids a database error.
+    if flight_id < 1 or flight_id > MAX_BIGINT:
         raise HTTPException(status_code=404, detail="Flight not found")
 
-    # Convert the SQLite row into a dictionary for the JSON response.
-    return row_to_dict(row)
+    result = await connection.execute(flight_select().where(flights.c.id == flight_id))
+    row = result.mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Flight not found")
+    return dict(row)

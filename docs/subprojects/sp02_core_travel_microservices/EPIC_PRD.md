@@ -33,13 +33,13 @@ Alternatives considered: **one PR per task** (five PRs) was rejected because 2.3
 
 ## Tasks
 
-| Task     | PRD                                                                            | Summary                                                                                                                                                                                                                      |
-| -------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TASK-2.1 | [`TASK-2.1_async_postgres_migration.md`](TASK-2.1_async_postgres_migration.md) | **Async PostgreSQL migration** for `flight_api` and `hotel_api`: SQLAlchemy 2.0 (async) + asyncpg + Alembic, one schema per service, seed data, FastAPI lifespan instead of `on_event`, Postgres in CI and Compose, `/ready` |
-| TASK-2.2 | TBD                                                                            | **Users and role tiers**: employee identity and role-tier tables used later by policy checks                                                                                                                                 |
-| TASK-2.3 | TBD                                                                            | **ACID booking transactions** using `SELECT ... FOR UPDATE` row-level locking on seat and room inventory to prevent double-booking                                                                                           |
-| TASK-2.4 | TBD                                                                            | **Idempotency keys** on booking and cancellation endpoints so client retries never duplicate a booking                                                                                                                       |
-| TASK-2.5 | TBD                                                                            | **Background transactional email** on booking confirmation and cancellation, via a worker decoupled from the request path                                                                                                    |
+| Task     | PRD                                                                            | Summary                                                                                                                                                                                                                                                                                             |
+| -------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-2.1 | [`TASK-2.1_async_postgres_migration.md`](TASK-2.1_async_postgres_migration.md) | **Async PostgreSQL migration** for `flight_api` and `hotel_api`: SQLAlchemy 2.0 (async) + asyncpg + Alembic, one schema per service, a normalized data model (airlines, airports, hotels and hotel offers), seed data, FastAPI lifespan instead of `on_event`, Postgres in CI and Compose, `/ready` |
+| TASK-2.2 | TBD                                                                            | **Users and role tiers**: employee identity and role-tier tables used later by policy checks                                                                                                                                                                                                        |
+| TASK-2.3 | TBD                                                                            | **ACID booking transactions** using `SELECT ... FOR UPDATE` row-level locking on seat and room inventory to prevent double-booking                                                                                                                                                                  |
+| TASK-2.4 | TBD                                                                            | **Idempotency keys** on booking and cancellation endpoints so client retries never duplicate a booking                                                                                                                                                                                              |
+| TASK-2.5 | TBD                                                                            | **Background transactional email** on booking confirmation and cancellation, via a worker decoupled from the request path                                                                                                                                                                           |
 
 ## Database Design: Shared Instance, Per-Service Schemas
 
@@ -49,13 +49,16 @@ Terraform injects **one** Neon connection string (`DATABASE_URL`) into **both** 
 Neon project  (one database: travel_agent, one role: travel_app, one DATABASE_URL)
  |
  +-- schema flight       owned by flight_api
- |     +-- flights                  (TASK-2.1)
+ |     +-- airlines                 (TASK-2.1)  reference data
+ |     +-- airports                 (TASK-2.1)  reference data, keyed by IATA code
+ |     +-- flights                  (TASK-2.1)  one dated flight; foreign keys to airlines and airports
  |     +-- bookings                 (TASK-2.3)
  |     +-- idempotency_keys         (TASK-2.4)
  |     +-- alembic_version          (flight_api's migration history)
  |
  +-- schema hotel        owned by hotel_api
- |     +-- hotels                   (TASK-2.1)
+ |     +-- hotels                   (TASK-2.1)  the property (name, city, area, rating)
+ |     +-- hotel_offers             (TASK-2.1)  a bookable stay window; foreign key to hotels
  |     +-- bookings                 (TASK-2.3)
  |     +-- idempotency_keys         (TASK-2.4)
  |     +-- alembic_version          (hotel_api's migration history)
@@ -75,6 +78,22 @@ Neon project  (one database: travel_agent, one role: travel_app, one DATABASE_UR
 | Privileges               | Both services share one role today, so the isolation is **logical, not a security boundary**. Per-service roles with `GRANT` limited to their own schema are a hardening step (candidate for SP03)                 |
 | Connection budget        | Each service instance holds a small pool (default 3). With `max_instances = 2` per service that is about 12 connections, well inside Neon's free-tier limit. Pools use pre-ping because Neon suspends idle compute |
 | Why not separate DBs     | Database-per-service is cleaner still but needs a second Neon database and a second secret, plus Terraform changes, for no benefit at this scale. The schema boundary keeps that option open                       |
+
+### Normalization principle (decided in TASK-2.1)
+
+The original single-table-per-service layout repeated facts on every row (an airline's name on each flight, a hotel's name, area and rating on each stay). Because the schema is created for the first time in TASK-2.1, with five mock rows and no dependants, it is normalized **before** the first migration instead of being reshaped later. The rule that keeps later tasks from rewriting this one: **TASK-2.1 builds tables that later tasks only extend, never reshape.**
+
+| Entity                 | Decision                                                                                                                                                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Airlines               | Own table with a surrogate key (airline codes are occasionally reassigned); flights reference it by foreign key                                                                                                       |
+| Airports               | Own table keyed by **IATA code**, the identifier the API and the agent already use; flights reference origin and destination by foreign key. Carries a time zone, so a later move to `TIMESTAMPTZ` needs no reshaping |
+| Flights                | One row is one **dated flight**, which is the unit TASK-2.3 locks and decrements. `flight_number` stays an attribute of the dated flight                                                                              |
+| Hotels vs hotel offers | The **property** (name, city, area, rating) is separate from the **offer** (stay window, price, rooms). The offer is the bookable unit; the REST `id` is the offer id                                                 |
+| City                   | Stays plain text on airports and hotels. A shared `cities` table would need a cross-schema foreign key, which this design forbids; revisit if flight-to-hotel matching moves server-side                              |
+| Currency               | Not modelled yet. Adding a column is additive when SP05 introduces multi-currency                                                                                                                                     |
+| Explicit non-goals     | Per-night room inventory and room types (a product feature beyond SP02's exit criteria that would change what a bookable unit is)                                                                                     |
+
+The REST responses stay flat (the joins happen in the query), so the MCP servers and the agent are unaffected. Two harmless fields are added: `airline_code` on flights and `hotel_id` on hotel results.
 
 ## Exit Criteria
 

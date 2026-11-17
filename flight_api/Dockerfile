@@ -17,12 +17,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only this service's code.
+# Copy this service's code and the shared database code (common/). The service only writes to PostgreSQL,
+# so the application files can stay read-only for appuser.
+COPY --chown=appuser:appuser common/ ./common/
 COPY --chown=appuser:appuser flight_api/ ./flight_api/
-
-# SQLite creates flights.db next to database.py at startup, so appuser must be able to write
-# to the flight_api directory itself (not just the files copied into it).
-RUN chown appuser:appuser /app/flight_api
 
 USER appuser
 

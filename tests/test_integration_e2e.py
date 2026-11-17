@@ -1,4 +1,4 @@
-"""End-to-end tests: agent -> MCP client -> MCP server (stdio) -> REST API -> SQLite.
+"""End-to-end tests: agent -> MCP client -> MCP server (stdio) -> REST API -> PostgreSQL.
 
 These start real uvicorn processes for flight_api (8000) and hotel_api (8001), because the
 MCP servers call the APIs over HTTP and TestClient cannot serve real network requests.
@@ -48,8 +48,12 @@ def _wait_until_up(port: int, process: subprocess.Popen, timeout: float = 30.0) 
 
 
 @pytest.fixture(scope="module")
-def running_apis():
-    """Ensure both REST APIs are reachable; start (and later stop) any that are not already running."""
+def running_apis(postgres_url):
+    """Ensure both REST APIs are reachable; start (and later stop) any that are not already running.
+
+    The `postgres_url` fixture exports DATABASE_URL, which the uvicorn subprocesses inherit, so they migrate and
+    seed the test database. APIs that are already running keep whatever database they were started with.
+    """
     started: list[subprocess.Popen] = []
     try:
         for package, port in API_SERVICES.items():
@@ -106,12 +110,12 @@ def test_e2e_lists_tools_from_both_mcp_servers(mock_mode):
 def test_e2e_parallel_flight_and_hotel_search(running_apis, mock_mode):
     result = _run("Help me travel from Bangalore to Delhi on 2026-06-10 and stay there.")
 
-    # Flight leg: reached flight_mcp_server -> flight_api -> flights.db
+    # Flight leg: reached flight_mcp_server -> flight_api -> PostgreSQL (flight schema)
     assert "Flights:" in result
     assert "AI101" in result
     assert "6E202" in result
 
-    # Hotel leg: reached hotel_mcp_server -> hotel_api -> hotels.db
+    # Hotel leg: reached hotel_mcp_server -> hotel_api -> PostgreSQL (hotel schema)
     assert "Hotels:" in result
     assert "Delhi Stay" in result
     assert "Budget Inn Delhi" in result

@@ -2,8 +2,11 @@
 #
 #   docker compose up --build --abort-on-container-exit --exit-code-from agent
 #
-# postgres and redis are provisioned now so later epics (SP02 Postgres, SP03/SP04 Redis, SP05 pgvector)
-# have a ready local environment, but nothing in the code uses them yet: the APIs still use SQLite.
+# Both REST APIs run on the postgres service below (database travel_agent, one schema per service: flight and
+# hotel). Each API migrates and seeds its own schema when it starts. redis is provisioned for later epics
+# (SP03/SP04); nothing uses it yet.
+#
+# To run only the database for local development and tests:  docker compose up -d postgres
 name: enterprise-travel-agent-platform
 
 services:
@@ -45,21 +48,29 @@ services:
       context: .
       dockerfile: flight_api/Dockerfile
     image: travel-agent/flight-api:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # The service name `postgres` resolves over the Compose network. If you change POSTGRES_PASSWORD to
+      # something with special characters, URL-encode it here.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-travel}:${POSTGRES_PASSWORD:-travel_dev_password}@postgres:5432/${POSTGRES_DB:-travel_agent}
     ports:
       - "8000:8000"
     healthcheck:
       # python:3.11-slim has no curl, so use Python's standard library. urlopen raises on non-2xx.
+      # /ready also proves the database is reachable, so the agent only starts once both APIs are usable.
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)",
         ]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 5s
+      start_period: 15s
     restart: unless-stopped
 
   hotel_api:
@@ -67,6 +78,11 @@ services:
       context: .
       dockerfile: hotel_api/Dockerfile
     image: travel-agent/hotel-api:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-travel}:${POSTGRES_PASSWORD:-travel_dev_password}@postgres:5432/${POSTGRES_DB:-travel_agent}
     ports:
       - "8001:8001"
     healthcheck:
@@ -75,12 +91,12 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/ready', timeout=3)",
         ]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 5s
+      start_period: 15s
     restart: unless-stopped
 
   # One-shot smoke test: runs a prompt through agent -> MCP servers (stdio, inside this container) -> REST APIs, then exits.
