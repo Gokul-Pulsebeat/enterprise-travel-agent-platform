@@ -29,6 +29,8 @@ Tasks are grouped by **what must ship together to be safe**, not one-to-one. The
 | 3   | `feat/sp02-t03-t04-transactional-bookings` | TASK-2.3 + TASK-2.4 | A booking endpoint that is lock-safe (2.3) but not retry-safe (2.4) can still double-charge a client that retries a timed-out request, so neither is shippable alone. Delivered as one PR with separate commits per task so the diff stays readable  |
 | 4   | `feat/sp02-t05-email-notifications`        | TASK-2.5            | Needs bookings to exist (PR 3) and introduces new infrastructure (a worker and a mail provider). Keeping it separate isolates that risk and lets the booking API ship without waiting on it                                                          |
 
+**Sequencing with SP00 (observability).** The API observability foundation ([SP00 `TASK-0.4`](../sp00_platform_and_dx/TASK-0.4_api_logging_foundation.md) logging, then [`TASK-0.5`](../sp00_platform_and_dx/TASK-0.5_api_metrics_traces_and_free_alerting.md) metrics, traces and free alerting) is scheduled **between PR 2 and PR 3**. Row locks, retries and notifications are exactly what is hard to debug blind, so PR 3 and PR 4 ship observable from the start, and each of them adds its own log events and metrics (`booking_confirmed`, lock-wait time, idempotent replays, email outcomes) through the SP00 helpers as part of its acceptance criteria.
+
 Alternatives considered: **one PR per task** (five PRs) was rejected because 2.3 and 2.4 cannot be released independently; **one PR for the whole epic** was rejected because it would mix an infrastructure migration with new business logic and make rollback impractical.
 
 ## Tasks
