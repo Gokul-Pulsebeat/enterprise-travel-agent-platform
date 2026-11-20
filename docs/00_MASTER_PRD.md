@@ -180,7 +180,7 @@ Epics are sequenced so each one unblocks the next. Each lives in its own folder 
 `docs/subprojects/sp00_platform_and_dx/`
 Rename the repo and standardize flight/hotel naming (`flight_mcp_server` / `hotel_mcp_server`); upgrade to the MCP Python SDK 2.x (`MCPServer`); add the baseline `pytest` suite; initialize this PRD hierarchy and the PR template. **Outcome:** a clean, symmetric, tested foundation. First ticket: [`TASK-0.1`](subprojects/sp00_platform_and_dx/TASK-0.1_naming_tests_and_dependency_locking.md).
 
-SP00 is a **continuous platform track** that runs alongside the linear epics: it also holds developer-experience tooling and ad-hoc infrastructure chores that no feature epic owns (for example [`TASK-0.2`](subprojects/sp00_platform_and_dx/TASK-0.2_dx_tooling.md): pre-commit hooks and workflow linting). See its [`EPIC_PRD.md`](subprojects/sp00_platform_and_dx/EPIC_PRD.md).
+SP00 is a **continuous platform track** that runs alongside the linear epics: it also holds developer-experience tooling and ad-hoc infrastructure chores that no feature epic owns (for example [`TASK-0.2`](subprojects/sp00_platform_and_dx/TASK-0.2_dx_tooling.md): pre-commit hooks and workflow linting; [`TASK-0.3`](subprojects/sp00_platform_and_dx/TASK-0.3_code_coverage.md): code coverage; and [`TASK-0.4`](subprojects/sp00_platform_and_dx/TASK-0.4_api_logging_foundation.md) and [`TASK-0.5`](subprojects/sp00_platform_and_dx/TASK-0.5_api_metrics_traces_and_free_alerting.md): the logging, metrics, tracing and free-alerting foundation for the business APIs, scheduled before SP02's transactional bookings). See its [`EPIC_PRD.md`](subprojects/sp00_platform_and_dx/EPIC_PRD.md).
 
 ### SP01 — CI/CD Pipelines, Dockerization & Serverless Terraform IaC
 
@@ -210,7 +210,7 @@ Build `policy_mcp_server` with **pgvector + BM25 hybrid retrieval and cross-enco
 ### SP06 — Dynamic Model Router, Egress Validation, Observability & Evals
 
 `docs/subprojects/sp06_model_router_evals_and_observability/`
-**Cost-aware model switching with fallbacks**; context compaction; a **deterministic price/flight-ID groundedness verifier**; **OpenTelemetry + Langfuse** tracing; a **50-case golden dataset** run with Ragas/DeepEval that **gates CI**.
+**Cost-aware model switching with fallbacks**; context compaction; a **deterministic price/flight-ID groundedness verifier**; **Langfuse** tracing and LLM-specific metrics (token cost, latency and model choice per request), built on the OpenTelemetry pipeline that SP00 [`TASK-0.4`](subprojects/sp00_platform_and_dx/TASK-0.4_api_logging_foundation.md) and [`TASK-0.5`](subprojects/sp00_platform_and_dx/TASK-0.5_api_metrics_traces_and_free_alerting.md) establish for the business APIs (SP06 does not rebuild API logging, metrics or alerting); a **50-case golden dataset** run with Ragas/DeepEval that **gates CI**.
 
 ### Dependency order
 
