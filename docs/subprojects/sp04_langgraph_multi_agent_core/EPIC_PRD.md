@@ -1,29 +1,35 @@
 # EPIC SP04 — LangGraph Multi-Agent Architecture & HITL Workflows
 
-**Status:** Placeholder — detailed task PRDs to be written when the epic starts
+**Status:** Placeholder — detailed task PRDs to be written when the epic starts (security scope expanded by the [threat model](../../02_AI_AND_MCP_SECURITY_THREAT_MODEL.md))
 **Depends on:** SP03
 **Master PRD:** [`../../00_MASTER_PRD.md`](../../00_MASTER_PRD.md)
 
 ## Goal
 
-Replace the hand-written planner loop with a durable, typed, multi-agent graph that can pause for human approval.
+Replace the hand-written planner loop with a durable, typed, multi-agent graph that can pause for human approval, and that stays safe when its model is fooled.
 
 ## Planned Tasks
 
-| Task     | Summary                                                                                                                               |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| TASK-4.1 | **Typed LangGraph state machine** replacing the custom DAG loop, preserving parallel execution and dependency semantics               |
-| TASK-4.2 | **Postgres checkpointer** so runs survive crashes and can resume                                                                      |
-| TASK-4.3 | **Supervisor plus three sub-agents** (Booking, Compliance, FinOps), each scoped to specific MCP servers to prevent tool-context bloat |
-| TASK-4.4 | **Pydantic structured outputs** for plans and agent hand-offs, replacing free-form JSON parsing                                       |
-| TASK-4.5 | **HITL manager-approval interrupts** for out-of-policy bookings, with approve/reject resume paths                                     |
+| Task     | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-4.1 | **Typed LangGraph state machine** replacing the custom DAG loop, preserving parallel execution and dependency semantics                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| TASK-4.2 | **Postgres checkpointer** so runs survive crashes and can resume                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| TASK-4.3 | **Supervisor plus three sub-agents** (Booking, Compliance, FinOps), each scoped to specific MCP servers to prevent tool-context bloat. The scope is also the **least-privilege boundary** (C-09): a sub-agent cannot call a tool outside its allow-list even if its model asks to                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| TASK-4.4 | **Pydantic structured outputs** for plans and agent hand-offs, replacing free-form JSON parsing. Agents exchange typed, validated structures, never free-text commands (C-14)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| TASK-4.5 | **HITL manager-approval interrupts** for out-of-policy bookings, with approve/reject resume paths. Approval summaries are generated from verified data, not model prose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| TASK-4.6 | **Agent security controls**, new: a **tool policy table** owned by this repository that classifies each tool as read-only or state-changing and requires human approval for state-changing ones, ignoring a server's own hints (C-11); **plan validation** against the original request and the sub-agent's allowed tool graph, rejecting goal hijack (ASI01); **provenance-tagged state** (user, tool, system) with schema-validated checkpoints, bounded history and no raw tool text promoted to system context (C-13, ASI06); **run budgets** for steps, tool calls, tokens, wall time and spend with a loop breaker (C-12, ASI08); **per-tool and per-server kill switches** by configuration (C-23); tests driven by hostile planner-output fixtures with a mock LLM |
 
 ## Exit Criteria
 
 - Killing the process mid-run and restarting resumes from the last checkpoint.
-- Each sub-agent can see only its own MCP tools.
+- Each sub-agent can see and call only its own MCP tools; an out-of-scope call is refused and logged.
 - An out-of-policy booking halts for approval and completes or aborts correctly on the manager's decision.
+- A state-changing tool cannot run without approval, regardless of what the model or the server says about it.
+- A plan that drifts from the user's request or references a tool outside the sub-agent's graph is rejected.
+- A run that exceeds its step, tool-call, token or time budget stops cleanly with a clear outcome; a runaway loop is broken.
+- A tool or server can be disabled by configuration without a code deploy.
+- The AI component inventory (started in SP03) lists every agent, its model provider and its prompts.
 
 ## Key Risks
 
-Framework lock-in; checkpoint schema evolution; keeping mock mode working for offline tests.
+Framework lock-in; checkpoint schema evolution; keeping mock mode working for offline tests (it is also what lets the security tests run for free, so it must be able to simulate hostile model behavior); approval fatigue if too many tools are classified state-changing.

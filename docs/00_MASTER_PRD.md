@@ -235,6 +235,19 @@ SP05's servers can begin in parallel with SP04 once SP03's HTTP transport patter
 | **Testability**   | Mock LLM mode is retained so the full suite runs offline and deterministically.                                                                     |
 | **Documentation** | Every task ships its PRD; architecture diagrams in README stay in sync.                                                                             |
 
+### Security and Supply-Chain Program
+
+Security is planned ahead of the epics that implement it, under one standing rule: **nothing may cost money** (open-source tools and free tiers only; no paid LLM calls in CI).
+
+| Concern                                      | Where it is planned                                                                                                                                                                                                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AI and MCP threat model**                  | [`02_AI_AND_MCP_SECURITY_THREAT_MODEL.md`](02_AI_AND_MCP_SECURITY_THREAT_MODEL.md): the MCP layer is treated as an external, untrusted party; maps the OWASP LLM Top 10 (2026), the OWASP Agentic Top 10 (2026) and an MCP attack catalog to numbered controls and owning tasks |
+| **SBOM** (generation and validation in CI)   | SP00 [`TASK-0.6`](subprojects/sp00_platform_and_dx/TASK-0.6_sbom_generation_and_validation.md)                                                                                                                                                                                  |
+| **MCP trust boundary and adversarial tests** | SP03 TASK-3.7 and TASK-3.8                                                                                                                                                                                                                                                      |
+| **Agent-level controls**                     | SP04 TASK-4.6                                                                                                                                                                                                                                                                   |
+| **RAG and sandbox security**                 | SP05 TASK-5.6                                                                                                                                                                                                                                                                   |
+| **AI-BOM, red-team evaluation, budgets**     | SP06 TASK-6.6 and TASK-6.7 (the AI component inventory starts in SP03 so SP06 does not retrofit it)                                                                                                                                                                             |
+
 ## 7. Risks & Open Questions
 
 | Risk                                                                                               | Mitigation                                                                                                                              |
