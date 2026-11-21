@@ -1,30 +1,43 @@
 # EPIC SP03 — Stateless Streamable HTTP MCP Layer, Auth & Security Guardrails
 
-**Status:** Placeholder — detailed task PRDs to be written when the epic starts
-**Depends on:** SP02
+**Status:** Placeholder — detailed task PRDs to be written when the epic starts (security scope expanded by the [threat model](../../02_AI_AND_MCP_SECURITY_THREAT_MODEL.md))
+**Depends on:** SP02, and SP00 TASK-0.4 to TASK-0.6 (audit logging, telemetry, SBOM) when scheduled
 **Master PRD:** [`../../00_MASTER_PRD.md`](../../00_MASTER_PRD.md)
 
 ## Goal
 
 Replace per-request `stdio` subprocesses with network-addressable, horizontally scalable MCP services, and put a security boundary around the agent.
 
+## Security Posture: the MCP Layer Is External
+
+The flight and hotel MCP servers are our own and accept no external input. This epic nevertheless designs and **proves** the agent-side defenses as if every MCP server were an untrusted third party: it may describe its tools deceptively, change them after review, return hostile text, hang, flood, echo credentials or impersonate another server (rule R2 of the [threat model](../../02_AI_AND_MCP_SECURITY_THREAT_MODEL.md)). Every control is deterministic code, testable with a malicious server and a mock LLM, and free to run.
+
 ## Planned Tasks
 
-| Task     | Summary                                                                                                               |
-| -------- | --------------------------------------------------------------------------------------------------------------------- |
-| TASK-3.1 | **Streamable HTTP transport**: run each MCP server as a stateless HTTP service; agent connects as a long-lived client |
-| TASK-3.2 | **JWT identity propagation** from the client through the agent to every MCP tool call and backing API                 |
-| TASK-3.3 | **Redis rate limiting** per user and per tool, with budget caps                                                       |
-| TASK-3.4 | **PII redaction** on ingress and in logs/traces                                                                       |
-| TASK-3.5 | **Fast SLM intent router** at ingress to reject off-domain or hostile requests before any expensive model runs        |
-| TASK-3.6 | **Indirect prompt-injection defense** on tool outputs before they reach any model                                     |
+| Task     | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-3.1 | **Streamable HTTP transport**: run each MCP server as a stateless HTTP service; agent connects as a long-lived client. Transport hardening (C-10): HTTPS only, `Origin` and `Host` validation, no wildcard CORS, request size and time limits                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| TASK-3.2 | **JWT identity propagation** from the client through the agent to every MCP tool call and backing API. Tokens are short-lived and **audience-bound to one server**, and a server never forwards a received token downstream (no token passthrough, C-09)                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| TASK-3.3 | **Redis rate limiting** per user, per tool and per identity, with budget caps (C-10, C-12)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| TASK-3.4 | **PII redaction** on ingress, in logs and traces, and **egress DLP on tool arguments** so secrets and personal data cannot leave through the argument channel (C-08)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| TASK-3.5 | **Fast SLM intent router** at ingress to reject off-domain or hostile requests before any expensive model runs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| TASK-3.6 | **Indirect prompt-injection defense** on tool outputs before they reach any model: structural separation, demarcation and screening of untrusted content (C-07)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| TASK-3.7 | **MCP trust boundary (external-server posture)**, new: agent-owned tool descriptions and schemas that are never forwarded from servers (C-01); server allow-list, TLS verification and Cloud Run identity (C-02); **tool manifest pinning** with quarantine on change, defeating rug pulls (C-03); namespacing and collision rejection (C-04); static scan of metadata for hidden Unicode and instruction patterns (C-05); result schema validation with size, depth and time limits (C-06); per-tool scopes; audit logging of every call and decision (C-19). Seeds the AI component inventory (`docs/security/ai-inventory.yaml`) with every MCP server and its tool-manifest hash, which SP06 turns into the AI-BOM |
+| TASK-3.8 | **Adversarial MCP test harness and regression suite**, new: a test-only malicious MCP server and deterministic tests for scenarios S-01 to S-15 of the threat model, run with a mock LLM as a **required CI check** (C-21). Test names carry the scenario ID so coverage of the catalog is auditable, and a test fails if its control is removed                                                                                                                                                                                                                                                                                                                                                                       |
+
+**Order.** TASK-3.1 and TASK-3.2 first (transport and identity). TASK-3.7 and TASK-3.8 then proceed together, test-first: each scenario test is written before the control it proves.
 
 ## Exit Criteria
 
 - Any replica of any MCP server can serve any request; no per-session server state.
-- Unauthenticated and over-limit requests are rejected with correct status codes.
-- A red-team suite of injection prompts, including injections embedded in tool data, does not change agent behavior.
+- Unauthenticated, wrong-audience and over-limit requests are rejected with correct status codes.
+- The model never sees a tool description that did not come from this repository.
+- A tool whose definition changes (name, description or input schema) is quarantined and an alert is logged; the change requires a reviewed update to the manifest lock.
+- No server can cause a token to be forwarded; a probe server that requests or echoes the caller's token is refused.
+- The adversarial regression suite (scenarios S-01 to S-15) passes in CI, and an injection embedded in tool data does not change agent behavior.
+- The AI component inventory lists every MCP server, its endpoint, scopes and tool-manifest hash.
+- All of the above runs with no paid service: a mock LLM provider and open-source tooling only.
 
 ## Key Risks
 
-MCP SDK 2.x transport and middleware APIs are new; false positives from the router and injection filters; added latency from guardrail hops.
+MCP SDK 2.x transport and middleware APIs are new; false positives from the router and injection filters; added latency from guardrail hops; heuristic scanners (C-05, C-07) have false negatives, so they are defense in depth only and the structural controls (C-01, C-03, C-07) carry the weight; manifest pinning adds a review step whenever a tool legitimately changes.

@@ -1,29 +1,39 @@
 # EPIC SP05 — Native Policy RAG MCP Server & FinOps Sandbox MCP Server
 
-**Status:** Placeholder — detailed task PRDs to be written when the epic starts
-**Depends on:** SP03 (transport pattern); integrates with SP04 sub-agents
+**Status:** Placeholder — detailed task PRDs to be written when the epic starts (security scope expanded by the [threat model](../../02_AI_AND_MCP_SECURITY_THREAT_MODEL.md))
+**Depends on:** SP03 (transport pattern, MCP trust boundary); integrates with SP04 sub-agents
 **Master PRD:** [`../../00_MASTER_PRD.md`](../../00_MASTER_PRD.md)
 
 ## Goal
 
-Add the two native MCP servers that give the platform its policy-compliance and expense-math capabilities. Neither sits behind a REST API.
+Add the two native MCP servers that give the platform its policy-compliance and expense-math capabilities. Neither sits behind a REST API. Both handle content the model will read or code the platform will run, so they are the two highest-risk surfaces for injection, poisoning and code execution.
 
 ## Planned Tasks
 
-| Task     | Summary                                                                                                                            |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| TASK-5.1 | **`policy_mcp_server` foundation**: Postgres schema for policy documents, employee role tiers, and manager-approval requests       |
-| TASK-5.2 | **Hybrid retrieval**: `pgvector` semantic search plus BM25 keyword search, fused into one ranked list                              |
-| TASK-5.3 | **Cross-encoder reranking** of retrieved policy chunks, with citations back to the source document                                 |
-| TASK-5.4 | **`finops_mcp_server` sandbox**: isolated Python execution (E2B or Docker) with no network, no secrets, and CPU/memory/time limits |
-| TASK-5.5 | **FinOps tools**: multi-currency per-diem math, GST calculations, and cost-chart generation                                        |
+| Task     | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TASK-5.1 | **`policy_mcp_server` foundation**: Postgres schema for policy documents, employee role tiers, and manager-approval requests                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| TASK-5.2 | **Hybrid retrieval**: `pgvector` semantic search plus BM25 keyword search, fused into one ranked list                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| TASK-5.3 | **Cross-encoder reranking** of retrieved policy chunks, with citations back to the source document                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| TASK-5.4 | **`finops_mcp_server` isolated execution**: no network, no secrets, and CPU, memory and time limits. See the design preference below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| TASK-5.5 | **FinOps tools**: multi-currency per-diem math, GST calculations, and cost-chart generation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| TASK-5.6 | **RAG and sandbox security**, new: **ingestion provenance** (policy documents only from an allow-listed repository folder, SHA-256 manifest verified at ingest, no executable or active content) (C-17); **injection scrubbing** of retrieved chunks and demarcation as untrusted content (C-07); **retrieval access control by role tier**, so a lower tier can never retrieve content meant for a higher one (LLM09); **mandatory citations**; **embedding outlier checks** to flag anomalous chunks (LLM05); **sandbox hardening** (read-only filesystem, no network, no secrets, output size cap) and re-validation of every numeric result (C-18); adversarial tests with poisoned documents and hostile code samples |
+
+## Design Preference: Avoid Executing Generated Code
+
+The roadmap describes the FinOps server as running Python in a sandbox. The safest way to handle unexpected code execution (ASI05) is **not to run model-written code at all**. Per-diem, GST and currency conversion are well-defined calculations, so the preferred design is **typed, deterministic calculator tools** (decimal arithmetic, a versioned rate table) whose inputs are validated parameters, not code. Where open-ended code execution is still wanted (for example chart generation), it runs under the sandbox rules in TASK-5.6.
+
+**Cost constraint on the sandbox runtime.** The runtime must be free to operate indefinitely. A hosted sandbox service is acceptable only if its allowance is **recurring**; an allowance that is a one-time credit would eventually cost money, so it is not acceptable under the project's standing rule (verify the current terms before choosing). Free options to evaluate in the task PRD: a locally run container for development and tests, and a locked-down, separately deployed service with network egress denied.
 
 ## Exit Criteria
 
-- Policy answers cite the retrieved policy text and respect the employee's role tier.
-- Sandboxed code cannot reach the network, read secrets, or exceed its resource limits.
+- Policy answers cite the retrieved policy text and respect the employee's role tier; a lower-tier user cannot retrieve higher-tier content, proven by tests.
+- A poisoned document (hidden instructions, active content, tampered hash) is rejected at ingestion or neutralized at retrieval and cannot change agent behavior.
+- Sandboxed code, if retained, cannot reach the network, read secrets, or exceed its resource limits, and every numeric result is re-validated against a reference calculation.
 - Per-diem and GST results match a reference calculation on a fixed test set.
+- Both servers are registered in the AI component inventory, their tool manifests are pinned (C-03), and they pass the SP03 adversarial regression suite.
+- Everything runs with no paid service.
 
 ## Key Risks
 
-Retrieval quality on real policy documents; sandbox provider lock-in (mitigated by a small sandbox interface); sandbox cold-start latency.
+Retrieval quality on real policy documents; sandbox provider choice and free-tier terms (mitigated by a small sandbox interface and by the deterministic-calculator preference); sandbox cold-start latency; access-control filtering inside retrieval is easy to get subtly wrong, so it is tested with adversarial fixtures rather than only happy paths.
